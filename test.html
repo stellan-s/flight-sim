@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Sim Test</title>
+</head>
+<body>
+  <h1>Testing Simulator Load</h1>
+  <div id="status">Loading...</div>
+  <div id="output"></div>
+
+  <script type="module">
+    const status = document.getElementById('status');
+    const output = document.getElementById('output');
+
+    function log(msg) {
+      console.log(msg);
+      output.innerHTML += msg + '<br>';
+    }
+
+    try {
+      log('Starting imports...');
+
+      import('./src/core/aircraft.js').then(module => {
+        log('✓ aircraft.js loaded');
+        const state = new module.AircraftState();
+        log('✓ AircraftState created');
+        log('  Altitude: ' + state.position.altitude);
+        log('  U: ' + state.velocity.u);
+        log('  IAS: ' + state.getIAS());
+      }).catch(err => {
+        log('✗ Error loading aircraft.js: ' + err.message);
+        console.error(err);
+      });
+
+      import('./src/core/forces.js').then(module => {
+        log('✓ forces.js loaded');
+      }).catch(err => {
+        log('✗ Error loading forces.js: ' + err.message);
+      });
+
+      import('./src/main.js').then(module => {
+        log('✓ main.js loaded');
+        status.textContent = 'All modules loaded!';
+      }).catch(err => {
+        log('✗ Error loading main.js: ' + err.message);
+        console.error(err);
+        status.textContent = 'Error loading modules';
+      });
+
+    } catch (error) {
+      log('✗ Fatal error: ' + error.message);
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Test</title>
+  <style>
+    body { margin: 0; padding: 20px; background: #f0f0f0; }
+    canvas { border: 2px solid red; background: white; display: block; margin: 20px 0; }
+    .info { font-family: monospace; background: #fff; padding: 10px; margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>Canvas Drawing Test</h1>
+  <div class="info" id="status">Initializing...</div>
+
+  <h2>Test 1: Basic Canvas</h2>
+  <canvas id="test1" width="800" height="200"></canvas>
+
+  <h2>Test 2: Text Rendering</h2>
+  <canvas id="test2" width="800" height="200"></canvas>
+
+  <h2>Test 3: Animation</h2>
+  <canvas id="test3" width="800" height="200"></canvas>
+  <div class="info" id="frameInfo">Frame: 0</div>
+
+  <script>
+    const status = document.getElementById('status');
+    const frameInfo = document.getElementById('frameInfo');
+
+    // Test 1: Basic shapes
+    const canvas1 = document.getElementById('test1');
+    const ctx1 = canvas1.getContext('2d');
+
+    status.innerHTML = 'Test 1: Drawing basic shapes...<br>';
+
+    ctx1.fillStyle = '#FFFFFF';
+    ctx1.fillRect(0, 0, canvas1.width, canvas1.height);
+
+    ctx1.fillStyle = '#FF0000';
+    ctx1.fillRect(10, 10, 50, 50);
+    status.innerHTML += '✓ Red square<br>';
+
+    ctx1.fillStyle = '#00FF00';
+    ctx1.fillRect(70, 10, 50, 50);
+    status.innerHTML += '✓ Green square<br>';
+
+    ctx1.strokeStyle = '#0000FF';
+    ctx1.lineWidth = 2;
+    ctx1.strokeRect(130, 10, 50, 50);
+    status.innerHTML += '✓ Blue rectangle outline<br>';
+
+    // Test 2: Text rendering
+    const canvas2 = document.getElementById('test2');
+    const ctx2 = canvas2.getContext('2d');
+
+    ctx2.fillStyle = '#FFFFFF';
+    ctx2.fillRect(0, 0, canvas2.width, canvas2.height);
+
+    status.innerHTML += '<br>Test 2: Drawing text...<br>';
+
+    ctx2.font = '14px monospace';
+    ctx2.fillStyle = '#000000';
+    ctx2.fillText('Default monospace font - ALT 5000 FT', 10, 30);
+    status.innerHTML += '✓ Default font<br>';
+
+    ctx2.font = '14px "B612 Mono", monospace';
+    ctx2.fillStyle = '#000000';
+    ctx2.fillText('B612 Mono font - IAS 120 KT', 10, 60);
+    status.innerHTML += '✓ B612 Mono font<br>';
+
+    ctx2.font = '20px Arial';
+    ctx2.fillStyle = '#FF0000';
+    ctx2.fillText('Large red Arial text', 10, 100);
+    status.innerHTML += '✓ Large Arial<br>';
+
+    // Test 3: Animation
+    const canvas3 = document.getElementById('test3');
+    const ctx3 = canvas3.getContext('2d');
+
+    let frame = 0;
+    let x = 10;
+
+    status.innerHTML += '<br>Test 3: Animation...<br>';
+
+    function animate() {
+      // Clear
+      ctx3.fillStyle = '#FFFFFF';
+      ctx3.fillRect(0, 0, canvas3.width, canvas3.height);
+
+      // Draw moving circle
+      ctx3.fillStyle = '#0000FF';
+      ctx3.beginPath();
+      ctx3.arc(x, 100, 20, 0, Math.PI * 2);
+      ctx3.fill();
+
+      // Draw text that updates
+      ctx3.font = '14px monospace';
+      ctx3.fillStyle = '#000000';
+      ctx3.fillText(`Frame: ${frame}  X: ${x}`, 10, 30);
+
+      // Update
+      x += 2;
+      if (x > canvas3.width) x = 10;
+      frame++;
+
+      frameInfo.textContent = `Frame: ${frame}`;
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+    status.innerHTML += '✓ Animation started<br>';
+
+    status.innerHTML += '<br><strong>All tests running!</strong>';
+  </script>
+</body>
+</html>

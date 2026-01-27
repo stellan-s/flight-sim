@@ -1,0 +1,374 @@
+// Force vector visualization
+
+import { bodyToEarth } from '../utils/coordinates.js';
+
+export class VectorRenderer {
+  constructor(chartRenderer) {
+    this.chart = chartRenderer;
+    this.vectorMode = 'all'; // 'energy', 'nav', 'all'
+  }
+
+  // Toggle between vector display modes
+  toggleVectorMode() {
+    const modes = ['all', 'energy', 'nav'];
+    const currentIndex = modes.indexOf(this.vectorMode);
+    this.vectorMode = modes[(currentIndex + 1) % modes.length];
+    console.log(`Vector mode: ${this.vectorMode.toUpperCase()}`);
+  }
+
+  // Draw a force vector from aircraft position
+  drawForceVector(state, force, label, color, direction = null, scale = 0.1) {
+    const ctx = this.chart.ctx;
+    const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
+
+    // Vector length (scale force to pixels)
+    const magnitude = force;
+    const length = magnitude * scale;
+
+    // Calculate direction in earth frame
+    let dx = 0, dy = 0;
+
+    if (direction) {
+      // Use provided direction vector (earth frame: north, east, down)
+      dx = direction.east;
+      dy = -direction.north; // Canvas Y is inverted
+    } else {
+      // Default based on label
+      if (label === 'WEIGHT') {
+        // Straight down (earth frame)
+        dx = 0;
+        dy = 1;
+      }
+    }
+
+    // Normalize and scale
+    const mag = Math.sqrt(dx * dx + dy * dy);
+    if (mag > 0) {
+      dx = (dx / mag) * length;
+      dy = (dy / mag) * length;
+    }
+
+    const endX = pos.x + dx;
+    const endY = pos.y + dy;
+
+    // For LIFT, use black arrow but colored label
+    const arrowColor = label === 'LIFT' ? '#000000' : color;
+
+    // Draw line
+    ctx.strokeStyle = arrowColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    // Arrow head
+    const headLength = 8;
+    const angle = Math.atan2(endY - pos.y, endX - pos.x);
+
+    ctx.fillStyle = arrowColor;
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+      endX - headLength * Math.cos(angle - Math.PI / 6),
+      endY - headLength * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      endX - headLength * Math.cos(angle + Math.PI / 6),
+      endY - headLength * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // Label
+    const labelX = endX + 10;
+    const labelY = endY;
+
+    let bgColor = '#FFFFFF';
+    let textColor = color;
+
+    if (label === 'WEIGHT') {
+      textColor = '#888888';
+    }
+
+    this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(magnitude)}N`, bgColor, textColor);
+  }
+
+  // Draw all force vectors
+  drawForceVectors(state, forces, wind) {
+    if (!forces || !forces.components) return;
+
+    const scale = 0.02; // Adjust for visibility
+    const alpha = forces.aerodynamic.alpha;
+
+    // Calculate force directions in body frame, then transform to earth frame
+
+    // LIFT: perpendicular to velocity in body frame
+    const liftBody = {
+      x: -Math.sin(alpha),
+      y: 0,
+      z: -Math.cos(alpha)
+    };
+    const liftEarth = bodyToEarth(liftBody, state.orientation);
+
+    // THRUST: forward in body frame
+    const thrustBody = { x: 1, y: 0, z: 0 };
+    const thrustEarth = bodyToEarth(thrustBody, state.orientation);
+
+    // DRAG: opposite to velocity in body frame
+    const dragBody = {
+      x: -Math.cos(alpha),
+      y: 0,
+      z: Math.sin(alpha)
+    };
+    const dragEarth = bodyToEarth(dragBody, state.orientation);
+
+    // WEIGHT: straight down in earth frame
+    const weightEarth = { north: 0, east: 0, down: 1 };
+
+    // RESULTANT: sum of all forces in body frame, transformed to earth
+    const resultantBody = {
+      x: forces.body.X,
+      y: forces.body.Y,
+      z: forces.body.Z
+    };
+    const resultantEarth = bodyToEarth(resultantBody, state.orientation);
+
+    // Draw energy vectors (forces) if in 'energy' or 'all' mode
+    if (this.vectorMode === 'energy' || this.vectorMode === 'all') {
+      // Determine lift color based on relation to weight
+      const liftValue = forces.components.lift;
+      const weightValue = forces.components.weight;
+      const liftToWeightRatio = liftValue / weightValue;
+
+      let liftColor;
+      if (liftToWeightRatio > 1.05) {
+        liftColor = '#00aa00'; // Green - climbing (lift > weight)
+      } else if (liftToWeightRatio < 0.95) {
+        liftColor = '#dd0000'; // Red - descending (lift < weight)
+      } else {
+        liftColor = '#ff8800'; // Orange - equilibrium (lift ≈ weight)
+      }
+
+      // Individual forces
+      this.drawForceVector(state, liftValue, 'LIFT', liftColor, liftEarth, scale);
+      this.drawForceVector(state, weightValue, 'WEIGHT', '#888888', weightEarth, scale);
+      this.drawForceVector(state, forces.components.thrust, 'THRUST', '#4488dd', thrustEarth, scale);
+      this.drawForceVector(state, forces.components.drag, 'DRAG', '#dd4444', dragEarth, scale);
+
+      // Resultant
+      const resultant = Math.sqrt(
+        forces.body.X * forces.body.X +
+        forces.body.Y * forces.body.Y +
+        forces.body.Z * forces.body.Z
+      );
+
+      const resultantColor = resultant < 500 ? '#44aa44' : '#dd4444';
+      this.drawForceVector(state, resultant, 'RESULTANT', resultantColor, resultantEarth, scale);
+    }
+
+    // Draw motion vectors (navigation) if in 'nav' or 'all' mode
+    if (this.vectorMode === 'nav' || this.vectorMode === 'all') {
+      this.drawMotionVectors(state, forces, wind);
+    }
+  }
+
+  // Draw motion vectors (velocity, ground track, wind)
+  drawMotionVectors(state, forces, wind) {
+    if (!forces) return;
+
+    const scale = 2; // Scale for velocity vectors (different from force scale)
+
+    // 1. VELOCITY VECTOR (Airspeed) - cyan
+    // Get velocity in body frame from aerodynamic data
+    const V = forces.aerodynamic.V; // m/s
+    const alpha = forces.aerodynamic.alpha;
+    const beta = forces.aerodynamic.beta || 0;
+
+    // Velocity in body frame (along relative wind direction)
+    const velBody = {
+      x: V * Math.cos(alpha) * Math.cos(beta),
+      y: V * Math.sin(beta),
+      z: V * Math.sin(alpha) * Math.cos(beta)
+    };
+    const velEarth = bodyToEarth(velBody, state.orientation);
+    this.drawVelocityVector(state, V, 'VELOCITY', '#00BBDD', velEarth, scale);
+
+    // 2. WIND VECTOR - light gray/blue
+    const windNorth = wind ? wind.windNorth : 0;
+    const windEast = wind ? wind.windEast : 0;
+    const windDown = wind ? wind.windDown : 0;
+    const windSpeed = Math.sqrt(windNorth * windNorth + windEast * windEast + windDown * windDown);
+
+    if (windSpeed > 0.1) {
+      const windEarth = {
+        north: windNorth,
+        east: windEast,
+        down: windDown
+      };
+      this.drawVelocityVector(state, windSpeed, 'WIND', '#8899BB', windEarth, scale);
+    }
+
+    // 3. GROUND TRACK VECTOR (Velocity + Wind) - brown/orange
+    const groundNorth = velEarth.north + windNorth;
+    const groundEast = velEarth.east + windEast;
+    const groundDown = velEarth.down + windDown;
+    const groundSpeed = Math.sqrt(groundNorth * groundNorth + groundEast * groundEast + groundDown * groundDown);
+
+    const groundEarth = {
+      north: groundNorth,
+      east: groundEast,
+      down: groundDown
+    };
+    this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', '#CC6600', groundEarth, scale);
+  }
+
+  // Draw velocity vector (similar to force vector but for velocities)
+  drawVelocityVector(state, magnitude, label, color, direction, scale) {
+    const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
+    const ctx = this.chart.ctx;
+
+    // Convert NED to screen coordinates
+    let dx = direction.east;
+    let dy = direction.north;
+
+    // Apply rotation for track-up mode
+    if (this.chart.rotationMode === 'track-up') {
+      const heading = this.chart.aircraftHeading;
+      const cos_h = Math.cos(-heading);
+      const sin_h = Math.sin(-heading);
+
+      const dx_rot = dx * cos_h - dy * sin_h;
+      const dy_rot = dx * sin_h + dy * cos_h;
+
+      dx = dx_rot;
+      dy = dy_rot;
+    }
+
+    // Scale and convert to screen space
+    const length = magnitude * scale;
+
+    // Normalize and scale
+    const mag = Math.sqrt(dx * dx + dy * dy);
+    if (mag > 0) {
+      dx = (dx / mag) * length;
+      dy = -(dy / mag) * length; // Negative because screen Y is inverted
+    }
+
+    const endX = pos.x + dx;
+    const endY = pos.y + dy;
+
+    // Draw line
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+
+    // Arrow head
+    const headLength = 10;
+    const angle = Math.atan2(endY - pos.y, endX - pos.x);
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(endX, endY);
+    ctx.lineTo(
+      endX - headLength * Math.cos(angle - Math.PI / 6),
+      endY - headLength * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.lineTo(
+      endX - headLength * Math.cos(angle + Math.PI / 6),
+      endY - headLength * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.closePath();
+    ctx.fill();
+
+    // Label
+    const labelX = endX + 10;
+    const labelY = endY;
+
+    const speedKts = Math.round(magnitude * 1.94384); // m/s to knots
+    this.chart.drawLabel(labelX, labelY, `${label}: ${speedKts}kt`, '#FFFFFF', color);
+  }
+
+  // Draw state vectors in top-right corner
+  drawStateVectors(state, controls, input, forces) {
+    const ctx = this.chart.ctx;
+    const startX = this.chart.canvas.width - 280;
+    const startY = 60;
+    const lineHeight = 18;
+
+    ctx.font = '12px "B612 Mono", monospace';
+    ctx.fillStyle = '#000000';
+
+    const pitch = state.orientation.pitch * 180 / Math.PI;
+    const roll = state.orientation.roll * 180 / Math.PI;
+    const alpha = state.getAlpha() * 180 / Math.PI;
+    const V = state.getVelocityMagnitude();
+
+    const data = [
+      `PITCH: ${pitch.toFixed(1)}°`,
+      `AOA: ${alpha.toFixed(1)}° ← key for lift`,
+      `ROLL: ${roll.toFixed(1)}°`,
+      `V: ${V.toFixed(1)} m/s (${Math.round(V * 1.94384)} kt)`,
+      ``
+    ];
+
+    // Add force info if available
+    if (forces && forces.components && forces.aerodynamic) {
+      const lift = forces.components.lift;
+      const weight = forces.components.weight;
+      const liftRatio = (lift / weight * 100).toFixed(0);
+      const Cl = forces.aerodynamic.Cl;
+
+      data.push(`LIFT: ${Math.round(lift)} N (${liftRatio}%)`);
+      data.push(`Cl: ${Cl.toFixed(3)} @ α=${alpha.toFixed(1)}°`);
+      data.push(``);
+    }
+
+    // Controls
+    data.push(`ELEV: ${(controls.elevator * 100).toFixed(0)}%`);
+    data.push(`TRIM: ${(input.getTrimDisplay() * 100).toFixed(0)}%`);
+    data.push(`THRO: ${(controls.throttle * 100).toFixed(0)}%`);
+
+    data.forEach((line, i) => {
+      ctx.fillText(line, startX, startY + i * lineHeight);
+    });
+  }
+
+  // Draw vector mode indicator
+  drawVectorModeIndicator() {
+    const ctx = this.chart.ctx;
+    const x = 20;
+    const y = this.chart.canvas.height - 30;
+
+    // Background
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillRect(x - 5, y - 15, 150, 25);
+
+    // Border
+    ctx.strokeStyle = '#000000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 5, y - 15, 150, 25);
+
+    // Text
+    ctx.font = '11px "B612 Mono", monospace';
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+
+    let modeText = '';
+    if (this.vectorMode === 'all') {
+      modeText = 'VECTORS: ALL';
+    } else if (this.vectorMode === 'energy') {
+      modeText = 'VECTORS: ENERGY';
+    } else if (this.vectorMode === 'nav') {
+      modeText = 'VECTORS: NAV';
+    }
+
+    ctx.fillText(modeText, x, y);
+    ctx.fillStyle = '#666666';
+    ctx.fillText('(V to toggle)', x + 100, y);
+  }
+}
