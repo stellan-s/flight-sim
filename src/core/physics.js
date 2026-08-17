@@ -238,17 +238,12 @@ export class PhysicsEngine {
   }
 
   cloneState(state) {
-    return {
-      position: { ...state.position },
-      velocity: { ...state.velocity },
-      orientation: { ...state.orientation },
-      angularVelocity: { ...state.angularVelocity },
-      getVelocityMagnitude: state.getVelocityMagnitude.bind(state),
-      getIAS: state.getIAS.bind(state),
-      getAlpha: state.getAlpha.bind(state),
-      getBeta: state.getBeta.bind(state),
-      getClimbRate: state.getClimbRate.bind(state)
-    };
+    const clonedState = Object.create(Object.getPrototypeOf(state));
+    clonedState.position = { ...state.position };
+    clonedState.velocity = { ...state.velocity };
+    clonedState.orientation = { ...state.orientation };
+    clonedState.angularVelocity = { ...state.angularVelocity };
+    return clonedState;
   }
 
   applyDerivatives(state, derivatives, dt) {

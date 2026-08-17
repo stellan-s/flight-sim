@@ -1,6 +1,7 @@
 // Force vector visualization
 
 import { bodyToEarth } from '../utils/coordinates.js';
+import { CONFIG } from '../config.js';
 
 export class VectorRenderer {
   constructor(chartRenderer) {
@@ -98,7 +99,7 @@ export class VectorRenderer {
   drawForceVectors(state, forces, wind) {
     if (!forces || !forces.components) return;
 
-    const scale = 0.02; // Adjust for visibility
+    const scale = CONFIG.FORCE_VECTOR_SCALE;
     const alpha = forces.aerodynamic.alpha;
 
     // Calculate force directions in body frame, then transform to earth frame
@@ -177,7 +178,7 @@ export class VectorRenderer {
   drawMotionVectors(state, forces, wind) {
     if (!forces) return;
 
-    const scale = 2; // Scale for velocity vectors (different from force scale)
+    const scale = CONFIG.VELOCITY_VECTOR_SCALE;
 
     // 1. VELOCITY VECTOR (Airspeed) - cyan
     // Get velocity in body frame from aerodynamic data
@@ -295,8 +296,8 @@ export class VectorRenderer {
   // Draw state vectors in top-right corner
   drawStateVectors(state, controls, input, forces) {
     const ctx = this.chart.ctx;
-    const startX = this.chart.canvas.width - 280;
-    const startY = 60;
+    const startX = this.chart.canvas.width - CONFIG.STATE_PANEL_X;
+    const startY = CONFIG.STATE_PANEL_Y;
     const lineHeight = 18;
 
     ctx.font = '12px "B612 Mono", monospace';

@@ -1,5 +1,7 @@
 // Input handling for flight controls
 
+import { CONFIG } from '../config.js';
+
 export class InputHandler {
   constructor(controls, chartRenderer, vorNavigation = null, simulator = null, vectorRenderer = null) {
     this.controls = controls;
@@ -82,7 +84,9 @@ export class InputHandler {
         this.simulator.helpScrollOffset = Math.max(0, this.simulator.helpScrollOffset);
       } else {
         // Normal zoom behavior
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const delta = e.deltaY > 0
+          ? 1 / CONFIG.ZOOM_SPEED
+          : CONFIG.ZOOM_SPEED;
         this.chart.setZoom(this.chart.zoom * delta);
       }
     });

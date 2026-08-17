@@ -1,17 +1,19 @@
 // Aviation chart rendering (Jeppesen/Navigraph style)
 
+import { CONFIG } from '../config.js';
+
 export class ChartRenderer {
   constructor(canvas) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.zoom = 3.0;
+    this.zoom = CONFIG.DEFAULT_ZOOM;
     this.centerLat = 0;
     this.centerLon = 0;
-    this.rotationMode = 'north-up'; // 'north-up' or 'track-up'
+    this.rotationMode = CONFIG.DEFAULT_ROTATION_MODE;
     this.aircraftHeading = 0; // For track-up mode
 
     // Chart scale: pixels per degree at zoom=1
-    this.baseScale = 10000; // meters per degree (rough)
+    this.baseScale = CONFIG.BASE_SCALE; // meters per degree (rough)
   }
 
   setRotationMode(mode) {
@@ -85,7 +87,32 @@ export class ChartRenderer {
   }
 
   setZoom(zoom) {
-    this.zoom = Math.max(0.1, Math.min(15, zoom));
+    this.zoom = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, zoom));
+  }
+
+  /**
+   * Calculate distance ratio from screen center for level-of-detail rendering
+   *
+   * Used to determine rendering detail based on how far an element is from screen center.
+   * Returns a ratio where:
+   * - 0.0 = at screen center
+   * - 1.0 = at screen corner (distance equals screen diagonal)
+   * - >1.0 = beyond screen diagonal
+   *
+   * @param {number} pixelX - X coordinate in pixels
+   * @param {number} pixelY - Y coordinate in pixels
+   * @returns {number} Distance ratio [0-1+] where 0=center, 1=screen diagonal
+   */
+  calculateDistanceRatio(pixelX, pixelY) {
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    const distFromCenter = Math.sqrt(
+      Math.pow(pixelX - centerX, 2) + Math.pow(pixelY - centerY, 2)
+    );
+    const screenDiagonal = Math.sqrt(
+      Math.pow(this.canvas.width, 2) + Math.pow(this.canvas.height, 2)
+    );
+    return distFromCenter / screenDiagonal;
   }
 
   // Draw coordinate grid (Jeppesen style)
@@ -285,15 +312,7 @@ export class ChartRenderer {
     const ctx = this.ctx;
 
     // Calculate distance from screen center for level-of-detail
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-    const distFromCenter = Math.sqrt(
-      Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)
-    );
-    const screenDiagonal = Math.sqrt(
-      Math.pow(this.canvas.width, 2) + Math.pow(this.canvas.height, 2)
-    );
-    const distRatio = distFromCenter / screenDiagonal;
+    const distRatio = this.calculateDistanceRatio(pos.x, pos.y);
 
     // Very far from center - minimal rendering
     if (distRatio > 0.8) {
@@ -519,7 +538,7 @@ export class ChartRenderer {
   }
 
   // Draw traffic pattern
-  drawTrafficPattern(airport, runway) {
+  drawTrafficPattern(airport, runway, highlight = false) {
     // Only draw if zoomed in sufficiently
     if (this.zoom < 4) return;
 
@@ -565,10 +584,10 @@ export class ChartRenderer {
     const base = this.latLonToPixels(baseLat, baseLon);
     const finalStart = this.latLonToPixels(endpoints.lat2, endpoints.lon2);
 
-    // Draw pattern (thin dashed gray line for schematic appearance)
+    // Draw pattern (green if highlighted, gray if not)
     ctx.save();
-    ctx.strokeStyle = '#666666';
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = highlight ? '#00FF00' : '#666666';
+    ctx.lineWidth = highlight ? 2.5 : 1.5;
     ctx.setLineDash([6, 3]);
 
     ctx.beginPath();
@@ -587,8 +606,8 @@ export class ChartRenderer {
 
     // Draw direction arrows at corners
     ctx.setLineDash([]);
-    ctx.fillStyle = '#666666';
-    const arrowSize = 6;
+    ctx.fillStyle = highlight ? '#00FF00' : '#666666';
+    const arrowSize = highlight ? 8 : 6;
 
     // Arrow at crosswind turn
     const angle1 = Math.atan2(crosswind.y - upwindEnd.y, crosswind.x - upwindEnd.x);
@@ -602,10 +621,10 @@ export class ChartRenderer {
     const angle3 = Math.atan2(base.y - downwindEnd.y, base.x - downwindEnd.x);
     this.drawArrowhead(ctx, downwindEnd.x, downwindEnd.y, angle3, arrowSize);
 
-    // Draw leg labels if zoomed in
+    // Draw leg labels if zoomed in (brighter green if highlighted)
     if (this.zoom > 5) {
       ctx.font = '9px "B612 Mono", monospace';
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = highlight ? '#00aa00' : '#000000';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -624,7 +643,7 @@ export class ChartRenderer {
         ctx.fillStyle = '#FFFFFF';
         ctx.fillRect(label.x - metrics.width/2 - 2, label.y - 6, metrics.width + 4, 12);
         // Text
-        ctx.fillStyle = '#000000';
+        ctx.fillStyle = highlight ? '#00aa00' : '#000000';
         ctx.fillText(label.text, label.x, label.y);
       });
     }
@@ -637,15 +656,7 @@ export class ChartRenderer {
     const pos = this.latLonToPixels(airport.lat, airport.lon);
 
     // Calculate distance from screen center for level-of-detail
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-    const distFromCenter = Math.sqrt(
-      Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)
-    );
-    const screenDiagonal = Math.sqrt(
-      Math.pow(this.canvas.width, 2) + Math.pow(this.canvas.height, 2)
-    );
-    const distRatio = distFromCenter / screenDiagonal;
+    const distRatio = this.calculateDistanceRatio(pos.x, pos.y);
 
     const ctx = this.ctx;
 
@@ -726,15 +737,7 @@ export class ChartRenderer {
     const ctx = this.ctx;
 
     // Calculate distance from screen center for level-of-detail
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-    const distFromCenter = Math.sqrt(
-      Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)
-    );
-    const screenDiagonal = Math.sqrt(
-      Math.pow(this.canvas.width, 2) + Math.pow(this.canvas.height, 2)
-    );
-    const distRatio = distFromCenter / screenDiagonal;
+    const distRatio = this.calculateDistanceRatio(pos.x, pos.y);
 
     // Very far from center - minimal rendering
     if (distRatio > 0.8) {
@@ -820,7 +823,7 @@ export class ChartRenderer {
 
     // Draw OBS course line (desired course - green)
     const courseRad = obs * Math.PI / 180;
-    const lineLength = 2000; // pixels
+    const lineLength = CONFIG.VOR_RADIAL_LENGTH_PIXELS;
 
     ctx.strokeStyle = '#44dd44';
     ctx.lineWidth = 2;
@@ -940,8 +943,8 @@ export class ChartRenderer {
   // Draw flight timer
   drawFlightTimer(flightTime) {
     const ctx = this.ctx;
-    const x = this.canvas.width - 120;
-    const y = this.canvas.height - 30;
+    const x = this.canvas.width - CONFIG.FLIGHT_TIMER_X;
+    const y = this.canvas.height - CONFIG.FLIGHT_TIMER_Y;
 
     ctx.save();
 
@@ -955,12 +958,25 @@ export class ChartRenderer {
     ctx.font = '12px "B612 Mono", monospace';
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'right';
-    ctx.fillText(`TIME: ${timeStr}`, x + 100, y);
+    ctx.fillText(`TIME: ${timeStr}`, x, y);
 
     ctx.restore();
   }
 
-  // Draw direct-to line from aircraft to airport
+  /**
+   * Draw direct-to line from aircraft to selected airport
+   *
+   * Renders a magenta dashed line indicating the direct flight path from
+   * aircraft current position to the target airport. This is a standard
+   * aviation navigation indication for "direct-to" navigation mode.
+   *
+   * Style: Magenta (#FF00FF), 2px wide, dashed (10px dash, 5px gap)
+   *
+   * @param {number} aircraftLat - Aircraft latitude in degrees
+   * @param {number} aircraftLon - Aircraft longitude in degrees
+   * @param {number} airportLat - Target airport latitude in degrees
+   * @param {number} airportLon - Target airport longitude in degrees
+   */
   drawDirectToLine(aircraftLat, aircraftLon, airportLat, airportLon) {
     // Validate coordinates
     if (typeof aircraftLat !== 'number' || typeof aircraftLon !== 'number' ||
@@ -988,7 +1004,33 @@ export class ChartRenderer {
     ctx.restore();
   }
 
-  // Draw airport navigation info box
+  /**
+   * Draw airport navigation information box
+   *
+   * Displays a semi-transparent white box in the bottom-right corner containing:
+   * - Airport ID and name
+   * - Distance in nautical miles
+   * - Bearing in degrees
+   * - ETA (minutes and seconds)
+   * - Active runway based on wind
+   * - Pattern altitude in feet
+   * - Recommended pattern entry type
+   *
+   * Box dimensions: 260×140 pixels, positioned 20px from bottom-right corner
+   * Style: White background (95% opacity), black 1px border, 10px monospace font
+   *
+   * @param {Object|null} navData - Navigation data from AirportNavigation.getNavigationData()
+   * @param {Object} navData.airport - Airport object with id and name properties
+   * @param {number} navData.distance - Distance to airport in nautical miles
+   * @param {number} navData.bearing - Bearing to airport in degrees [0-360°)
+   * @param {Object} navData.eta - Estimated time of arrival
+   * @param {number} navData.eta.minutes - ETA minutes component
+   * @param {number} navData.eta.seconds - ETA seconds component
+   * @param {Object} [navData.activeRunway] - Active runway object (optional, may be null)
+   * @param {string} navData.activeRunway.id - Runway identifier (e.g., '27L', '09R')
+   * @param {string} [navData.recommendedEntry] - Recommended entry type (optional, may be null)
+   * @param {number} navData.patternAltitude - Traffic pattern altitude in feet
+   */
   drawAirportNavInfo(navData) {
     if (!navData) return;
 
@@ -1051,209 +1093,6 @@ export class ChartRenderer {
       ctx.fillStyle = '#00aa00';
       ctx.font = 'bold 11px "B612 Mono", monospace';
       ctx.fillText(`Entry: ${navData.recommendedEntry}`, x + 10, currentY);
-    }
-
-    ctx.restore();
-  }
-
-  // Modify drawAirport to support highlighting
-  drawAirportHighlighted(airport, highlight = false) {
-    // Use existing drawAirport logic but pass highlight flag to pattern
-    const pos = this.latLonToPixels(airport.lat, airport.lon);
-
-    // Calculate distance from screen center for level-of-detail
-    const centerX = this.canvas.width / 2;
-    const centerY = this.canvas.height / 2;
-    const distFromCenter = Math.sqrt(
-      Math.pow(pos.x - centerX, 2) + Math.pow(pos.y - centerY, 2)
-    );
-    const screenDiagonal = Math.sqrt(
-      Math.pow(this.canvas.width, 2) + Math.pow(this.canvas.height, 2)
-    );
-    const distRatio = distFromCenter / screenDiagonal;
-
-    const ctx = this.ctx;
-
-    // At very low zoom, always show full symbol regardless of distance
-    const alwaysShowFull = this.zoom <= 1.5;
-
-    // Level of detail based on distance from center
-    // Very far: small dot
-    // Far: simple symbol
-    // Close: runways and patterns
-    if (distRatio > 0.8 && !alwaysShowFull) {
-      // Very far from center - minimal rendering (small dot only)
-      ctx.save();
-      ctx.fillStyle = highlight ? '#00FF00' : '#666666';
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, highlight ? 3 : 2, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    // Draw runways if available and zoomed in enough
-    if (airport.runways && this.zoom > 2 && (distRatio < 0.5 || alwaysShowFull)) {
-      airport.runways.forEach(runway => {
-        this.drawRunway(airport, runway);
-      });
-    } else {
-      // At low zoom or far distance, show simple airport symbol (black circle)
-      ctx.save();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = highlight ? '#00FF00' : '#000000';
-      ctx.lineWidth = highlight ? 3 : 2;
-
-      // Circle (for airport symbol)
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, 6, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.stroke();
-
-      ctx.restore();
-    }
-
-    // Draw airport ID label with background
-    if (distRatio < 0.7 || alwaysShowFull) {
-      ctx.save();
-      ctx.font = 'bold 10px "B612 Mono", monospace';
-      ctx.textBaseline = 'middle';
-      const textMetrics = ctx.measureText(airport.id);
-
-      // White background box with border (green if highlighted)
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = highlight ? '#00FF00' : '#000000';
-      ctx.lineWidth = highlight ? 2 : 1;
-      const padding = 2;
-      const boxX = pos.x + 10;
-      const boxY = pos.y - 7;
-      ctx.fillRect(boxX - padding, boxY, textMetrics.width + padding * 2, 14);
-      ctx.strokeRect(boxX - padding, boxY, textMetrics.width + padding * 2, 14);
-
-      // Text (green if highlighted)
-      ctx.fillStyle = highlight ? '#00aa00' : '#000000';
-      ctx.fillText(airport.id, boxX, pos.y);
-
-      ctx.restore();
-    }
-
-    // Draw traffic patterns (highlighted in green if selected)
-    if (airport.runways && this.zoom > 3 && distRatio < 0.9) {
-      airport.runways.forEach(runway => {
-        this.drawTrafficPatternHighlighted(airport, runway, highlight);
-      });
-    }
-  }
-
-  // Draw traffic pattern with optional highlight
-  drawTrafficPatternHighlighted(airport, runway, highlight = false) {
-    // Only draw if zoomed in sufficiently
-    if (this.zoom < 4) return;
-
-    const ctx = this.ctx;
-    const endpoints = this.calculateRunwayEndpoints(airport.lat, airport.lon, runway);
-
-    // Convert pattern distance to degrees (0.8 NM)
-    const patternDistanceNM = runway.trafficPattern.distance;
-    const patternDistanceDeg = patternDistanceNM / 60; // 1° ≈ 60 NM
-
-    // Calculate perpendicular offset (left pattern = -90°)
-    const offsetAngle = runway.trafficPattern.side === 'left' ? -90 : 90;
-    const patternHeadingRad = ((runway.heading + offsetAngle) * Math.PI) / 180;
-    const offsetLat = patternDistanceDeg * Math.cos(patternHeadingRad);
-    const offsetLon = patternDistanceDeg * Math.sin(patternHeadingRad);
-
-    // Calculate pattern waypoints
-    // Extension length for upwind/downwind
-    const extensionDeg = 0.015; // ~0.9 NM extension
-    const headingRad = (runway.heading * Math.PI) / 180;
-
-    // Upwind: extends from departure threshold (pos1)
-    const upwindEndLat = endpoints.lat1 + extensionDeg * Math.cos(headingRad);
-    const upwindEndLon = endpoints.lon1 + extensionDeg * Math.sin(headingRad);
-
-    // Crosswind turn point
-    const crosswindLat = upwindEndLat + offsetLat;
-    const crosswindLon = upwindEndLon + offsetLon;
-
-    // Downwind: parallel to runway, offset to pattern side
-    const downwindEndLat = endpoints.lat2 + offsetLat - extensionDeg * Math.cos(headingRad);
-    const downwindEndLon = endpoints.lon2 + offsetLon - extensionDeg * Math.sin(headingRad);
-
-    // Base turn point (aligned with approach threshold)
-    const baseLat = endpoints.lat2 + offsetLat;
-    const baseLon = endpoints.lon2 + offsetLon;
-
-    // Convert all points to screen coordinates
-    const upwindStart = this.latLonToPixels(endpoints.lat1, endpoints.lon1);
-    const upwindEnd = this.latLonToPixels(upwindEndLat, upwindEndLon);
-    const crosswind = this.latLonToPixels(crosswindLat, crosswindLon);
-    const downwindEnd = this.latLonToPixels(downwindEndLat, downwindEndLon);
-    const base = this.latLonToPixels(baseLat, baseLon);
-    const finalStart = this.latLonToPixels(endpoints.lat2, endpoints.lon2);
-
-    // Draw pattern (green if highlighted, gray if not)
-    ctx.save();
-    ctx.strokeStyle = highlight ? '#00FF00' : '#666666';
-    ctx.lineWidth = highlight ? 2.5 : 1.5;
-    ctx.setLineDash([6, 3]);
-
-    ctx.beginPath();
-    // Upwind leg
-    ctx.moveTo(upwindStart.x, upwindStart.y);
-    ctx.lineTo(upwindEnd.x, upwindEnd.y);
-    // Crosswind leg
-    ctx.lineTo(crosswind.x, crosswind.y);
-    // Downwind leg
-    ctx.lineTo(downwindEnd.x, downwindEnd.y);
-    // Base leg
-    ctx.lineTo(base.x, base.y);
-    // Final leg
-    ctx.lineTo(finalStart.x, finalStart.y);
-    ctx.stroke();
-
-    // Draw direction arrows at corners
-    ctx.setLineDash([]);
-    ctx.fillStyle = highlight ? '#00FF00' : '#666666';
-    const arrowSize = highlight ? 8 : 6;
-
-    // Arrow at crosswind turn
-    const angle1 = Math.atan2(crosswind.y - upwindEnd.y, crosswind.x - upwindEnd.x);
-    this.drawArrowhead(ctx, upwindEnd.x, upwindEnd.y, angle1, arrowSize);
-
-    // Arrow at downwind
-    const angle2 = Math.atan2(downwindEnd.y - crosswind.y, downwindEnd.x - crosswind.x);
-    this.drawArrowhead(ctx, crosswind.x, crosswind.y, angle2, arrowSize);
-
-    // Arrow at base turn
-    const angle3 = Math.atan2(base.y - downwindEnd.y, base.x - downwindEnd.x);
-    this.drawArrowhead(ctx, downwindEnd.x, downwindEnd.y, angle3, arrowSize);
-
-    // Draw leg labels if zoomed in (brighter green if highlighted)
-    if (this.zoom > 5) {
-      ctx.font = '9px "B612 Mono", monospace';
-      ctx.fillStyle = highlight ? '#00aa00' : '#000000';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      // Label each leg at midpoint with white background
-      const labels = [
-        { x: (upwindStart.x + upwindEnd.x) / 2, y: (upwindStart.y + upwindEnd.y) / 2, text: 'UPWIND' },
-        { x: (upwindEnd.x + crosswind.x) / 2, y: (upwindEnd.y + crosswind.y) / 2, text: 'XWIND' },
-        { x: (crosswind.x + downwindEnd.x) / 2, y: (crosswind.y + downwindEnd.y) / 2, text: 'DOWNWIND' },
-        { x: (downwindEnd.x + base.x) / 2, y: (downwindEnd.y + base.y) / 2, text: 'BASE' },
-        { x: (base.x + finalStart.x) / 2, y: (base.y + finalStart.y) / 2, text: 'FINAL' }
-      ];
-
-      labels.forEach(label => {
-        const metrics = ctx.measureText(label.text);
-        // White background
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(label.x - metrics.width/2 - 2, label.y - 6, metrics.width + 4, 12);
-        // Text
-        ctx.fillStyle = highlight ? '#00aa00' : '#000000';
-        ctx.fillText(label.text, label.x, label.y);
-      });
     }
 
     ctx.restore();

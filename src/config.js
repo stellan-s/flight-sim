@@ -41,8 +41,7 @@ export const CONFIG = {
   VELOCITY_VECTOR_SCALE: 2,      // Scale for velocity arrows
 
   // VOR visualization
-  VOR_RADIAL_LENGTH: 2.0,        // degrees
-  DME_ARC_RADIUS_NM: 5,          // nautical miles
+  VOR_RADIAL_LENGTH_PIXELS: 2000,
 
   // Instrument rendering
   PITCH_SCALE_PIXELS_PER_DEG: 5,  // Pixels per degree for attitude indicator

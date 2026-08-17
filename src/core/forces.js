@@ -20,6 +20,8 @@
  * - Force components: {lift, drag, thrust, weight}
  */
 
+import { AIR_DENSITY_SEA_LEVEL, KNOTS_TO_MS } from '../utils/constants.js';
+
 const g = 9.81; // m/s²
 
 // Standard atmosphere model
@@ -33,6 +35,12 @@ export function getAirDensity(altitude_ft) {
   const T = T0 - L * h;
   const p = p0 * Math.pow(T / T0, g / (R * L));
   return p / (R * T);
+}
+
+export function calculateTrueAirspeedForIAS(iasKnots, altitudeFt) {
+  const indicatedAirspeedMs = iasKnots * KNOTS_TO_MS;
+  const density = getAirDensity(altitudeFt);
+  return indicatedAirspeedMs / Math.sqrt(density / AIR_DENSITY_SEA_LEVEL);
 }
 
 // State velocities are AIR-RELATIVE in body frame (steady wind handled in kinematics)

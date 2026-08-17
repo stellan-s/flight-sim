@@ -14,6 +14,7 @@
 
 import { AircraftState, AircraftSpecs, Controls } from './core/aircraft.js';
 import { PhysicsEngine } from './core/physics.js';
+import { calculateTrueAirspeedForIAS } from './core/forces.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
@@ -22,6 +23,8 @@ import { InputHandler } from './controls/input.js';
 import { WindModel } from './navigation/wind.js';
 import { VORNavigation } from './navigation/vor.js';
 import { AirportNavigation } from './navigation/airport-nav.js';
+import { CONFIG } from './config.js';
+import { DEG_TO_RAD } from './utils/constants.js';
 
 class FlightSimulator {
   constructor() {
@@ -37,15 +40,17 @@ class FlightSimulator {
     this.specs = new AircraftSpecs('cessna172');
     this.controls = new Controls();
 
-    // Set initial trim condition (conservative start)
-    // Start at 5000ft, ~100 knots cruise
-    this.state.position.altitude = 5000;
-    this.state.velocity.u = 51.4; // 100 knots in m/s
+    // Set the configured initial flight condition.
+    this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
+    this.state.velocity.u = calculateTrueAirspeedForIAS(
+      CONFIG.INITIAL_SPEED,
+      CONFIG.INITIAL_ALTITUDE
+    );
     this.state.velocity.v = 0;    // No lateral velocity
     this.state.velocity.w = 0;    // Zero vertical velocity (will settle naturally)
-    this.state.orientation.pitch = 0.0; // Start level
-    this.state.orientation.roll = 0;
-    this.state.orientation.yaw = 0;
+    this.state.orientation.pitch = CONFIG.INITIAL_PITCH * DEG_TO_RAD;
+    this.state.orientation.roll = CONFIG.INITIAL_ROLL * DEG_TO_RAD;
+    this.state.orientation.yaw = CONFIG.INITIAL_HEADING * DEG_TO_RAD;
     this.state.angularVelocity.p = 0;
     this.state.angularVelocity.q = 0;
     this.state.angularVelocity.r = 0;
@@ -53,7 +58,7 @@ class FlightSimulator {
     this.controls.elevator = 0.0; // Start neutral
 
     // Debug mode
-    this.debugMode = true;
+    this.debugMode = CONFIG.DEBUG_MODE;
     this.debugInterval = 0;
     this.lastDebugTime = 0;
     this.frameCount = 0;
@@ -66,7 +71,10 @@ class FlightSimulator {
 
     // Wind model with dynamic variations
     this.wind = new WindModel();
-    this.wind.setBaseWind(270, 15); // 270° @ 15kt base (will vary ±20°, ±5kt)
+    this.wind.setBaseWind(
+      CONFIG.INITIAL_WIND_DIRECTION,
+      CONFIG.INITIAL_WIND_SPEED
+    );
 
     // VOR navigation (wait for chart features to load)
     this.vorNav = null;
@@ -83,7 +91,8 @@ class FlightSimulator {
 
     // Timing
     this.lastTime = performance.now();
-    this.dt = 1 / 60; // Fixed timestep
+    this.dt = CONFIG.PHYSICS_TIMESTEP;
+    this.physicsSubsteps = Math.max(1, Math.floor(CONFIG.PHYSICS_SUBSTEPS));
     this.accumulator = 0;
 
     // Start game loop
@@ -167,8 +176,8 @@ class FlightSimulator {
     console.log('  1/2/3/4: Zoom presets (1x, 3x, 5x, 10x)');
     console.log('');
     console.log('AIRCRAFT: Cessna 172 Skyhawk');
-    console.log('  Starting: 5000ft MSL, 100kt IAS, trimmed for cruise');
-    console.log('  Wind: 270° @ 15kt base (DYNAMIC - varies ±20°, ±5kt)');
+    console.log(`  Starting: ${CONFIG.INITIAL_ALTITUDE}ft MSL, ${CONFIG.INITIAL_SPEED}kt IAS, trimmed for cruise`);
+    console.log(`  Wind: ${CONFIG.INITIAL_WIND_DIRECTION}° @ ${CONFIG.INITIAL_WIND_SPEED}kt base (DYNAMIC - varies ±20°, ±5kt)`);
     console.log('  Navigation: ABC VOR auto-tuned');
     console.log('  Timer: Flight time displayed bottom-right');
     console.log('');
@@ -193,7 +202,9 @@ class FlightSimulator {
     console.log('  Center screen: Black line (turn to center = on course)');
     console.log('  Chart: Green=OBS/center, Blue=radial, Black=your offset');
     console.log('');
-    console.log('Debug output enabled (every 2 seconds)...');
+    console.log(this.debugMode
+      ? `Debug output enabled (every ${CONFIG.DEBUG_OUTPUT_INTERVAL / 1000} seconds)...`
+      : 'Debug output disabled.');
     console.log('');
   }
 
@@ -216,12 +227,15 @@ class FlightSimulator {
     // Update physics with fixed timestep (skip if paused)
     if (!this.paused) {
       while (this.accumulator >= this.dt) {
-        // Update dynamic wind if available
-        if (typeof this.wind.updateDynamic === 'function') {
-          this.wind.updateDynamic(this.dt);
-        }
+        const substepDt = this.dt / this.physicsSubsteps;
+        for (let i = 0; i < this.physicsSubsteps; i++) {
+          // Update dynamic wind if available
+          if (typeof this.wind.updateDynamic === 'function') {
+            this.wind.updateDynamic(substepDt);
+          }
 
-        this.lastForces = this.physics.update(this.dt);
+          this.lastForces = this.physics.update(substepDt);
+        }
 
         // Update energy diagram
         this.energyDiagram.update(this.state, this.dt);
@@ -234,7 +248,7 @@ class FlightSimulator {
 
       // Debug output (every 2 seconds)
       this.debugInterval += this.dt;
-      if (this.debugMode && this.debugInterval >= 2.0) {
+      if (this.debugMode && this.debugInterval >= CONFIG.DEBUG_OUTPUT_INTERVAL / 1000) {
         this.debugInterval = 0;
         console.log('=== DEBUG ===');
         console.log('Altitude:', Math.round(this.state.position.altitude), 'ft');
@@ -336,7 +350,7 @@ class FlightSimulator {
         this.chartFeatures.airports.forEach(airport => {
           const isSelected = airport.id === selectedAirportId;
           if (isSelected) {
-            this.chart.drawAirportHighlighted(airport, true);
+            this.chart.drawAirport(airport, true);
           } else {
             this.chart.drawAirport(airport);
           }

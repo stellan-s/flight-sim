@@ -1,5 +1,7 @@
 // Navigation instruments (CDI, etc.)
 
+import { CONFIG } from '../config.js';
+
 export class InstrumentRenderer {
   constructor(chartRenderer) {
     this.chart = chartRenderer;
@@ -23,8 +25,8 @@ export class InstrumentRenderer {
     // Rotate for roll
     ctx.rotate(-roll);
 
-    // Calculate vertical offset based on pitch (scale: 5 pixels per degree)
-    const pitchOffset = pitch * 5;
+    // Calculate vertical offset based on configured pitch scale.
+    const pitchOffset = pitch * CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
 
     // Draw horizon line across entire screen width
     const lineLength = Math.max(this.chart.canvas.width, this.chart.canvas.height) * 1.5;
@@ -115,10 +117,10 @@ export class InstrumentRenderer {
     // Left side pitch scale
     const leftX = 20;
     const rightX = this.chart.canvas.width - 20;
-    const pixelsPerDegree = 5;
+    const pixelsPerDegree = CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
 
-    // Draw ticks every 10 degrees from -30 to +30
-    for (let deg = -30; deg <= 30; deg += 10) {
+    // Draw ticks every 10 degrees across the configured pitch range.
+    for (let deg = -CONFIG.PITCH_SCALE_RANGE; deg <= CONFIG.PITCH_SCALE_RANGE; deg += 10) {
       const yPos = centerY - (deg * pixelsPerDegree);
 
       // Only draw if on screen

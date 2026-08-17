@@ -1,13 +1,43 @@
-// Airport navigation and direct-to functionality
-
+/**
+ * Airport Navigation System
+ *
+ * Manages airport selection, active runway determination, and approach guidance.
+ * Provides direct-to navigation with distance, bearing, and ETA calculations.
+ *
+ * Features:
+ * - Haversine distance calculation (accurate for distances < 1000 NM)
+ * - Forward azimuth bearing calculation
+ * - Wind-aware runway selection (selects runway most aligned into wind)
+ * - Standard traffic pattern entry recommendations based on approach angle
+ *
+ * Navigation formulas:
+ * - Distance: Haversine formula using Earth radius of 3440.065 NM
+ * - Bearing: Forward azimuth from aircraft to airport [0-360°)
+ * - Active runway: Minimizes angular difference between runway heading and wind direction
+ *
+ * @class AirportNavigation
+ * @example
+ * const airportNav = new AirportNavigation(chartFeatures);
+ * airportNav.selectAirport('KJFK');
+ * const navData = airportNav.getNavigationData(lat, lon, hdg, gs, windDir);
+ */
 export class AirportNavigation {
+  /**
+   * Creates an AirportNavigation instance
+   * @param {Object} chartFeatures - Chart features object containing airports array
+   * @param {Array} chartFeatures.airports - Array of airport objects
+   */
   constructor(chartFeatures) {
     this.chartFeatures = chartFeatures;
     this.selectedAirport = null;
     this.selectedRunway = null; // Active runway based on wind
   }
 
-  // Select an airport by ID
+  /**
+   * Select an airport by ID
+   * @param {string} airportId - Airport identifier (e.g., 'KJFK', 'KORD')
+   * @returns {Object|null} Airport object if found, null otherwise
+   */
   selectAirport(airportId) {
     if (!this.chartFeatures || !this.chartFeatures.airports) {
       return null;
@@ -23,14 +53,22 @@ export class AirportNavigation {
     return null;
   }
 
-  // Clear selected airport
+  /**
+   * Clear selected airport and runway
+   */
   clearSelection() {
     this.selectedAirport = null;
     this.selectedRunway = null;
     console.log('Airport selection cleared');
   }
 
-  // Get nearest airport to current position
+  /**
+   * Get nearest airport to current position
+   * @param {number} lat - Current latitude in degrees
+   * @param {number} lon - Current longitude in degrees
+   * @param {number} [maxDistance=50] - Maximum search radius in nautical miles
+   * @returns {Object|null} Nearest airport object within maxDistance, or null if none found
+   */
   getNearestAirport(lat, lon, maxDistance = 50) {
     if (!this.chartFeatures || !this.chartFeatures.airports) {
       return null;
@@ -50,7 +88,13 @@ export class AirportNavigation {
     return nearest;
   }
 
-  // Get airports sorted by distance
+  /**
+   * Get airports sorted by distance from current position
+   * @param {number} lat - Current latitude in degrees
+   * @param {number} lon - Current longitude in degrees
+   * @param {number} [maxDistance=100] - Maximum search radius in nautical miles
+   * @returns {Array<{airport: Object, distance: number}>} Array of objects containing airport and distance, sorted by distance (nearest first)
+   */
   getAirportsByDistance(lat, lon, maxDistance = 100) {
     if (!this.chartFeatures || !this.chartFeatures.airports) {
       return [];
@@ -66,7 +110,17 @@ export class AirportNavigation {
       .sort((a, b) => a.distance - b.distance);
   }
 
-  // Cycle to next nearest airport
+  /**
+   * Cycle to next nearest airport
+   *
+   * If no airport is selected, selects the nearest.
+   * If an airport is selected, selects the next nearest in the list.
+   * Wraps around to nearest when reaching the end of list.
+   *
+   * @param {number} currentLat - Current latitude in degrees
+   * @param {number} currentLon - Current longitude in degrees
+   * @returns {Object|null} Newly selected airport object, or null if no airports within 100 NM
+   */
   cycleToNextAirport(currentLat, currentLon) {
     const nearby = this.getAirportsByDistance(currentLat, currentLon, 100);
     if (nearby.length === 0) return null;
@@ -95,7 +149,21 @@ export class AirportNavigation {
     return this.selectedAirport;
   }
 
-  // Calculate distance in nautical miles
+  /**
+   * Calculate distance in nautical miles using Haversine formula
+   *
+   * Haversine formula: a = sin²(Δφ/2) + cos(φ1)⋅cos(φ2)⋅sin²(Δλ/2)
+   *                    c = 2⋅atan2(√a, √(1−a))
+   *                    d = R⋅c
+   *
+   * Accurate for distances < 1000 NM. Uses Earth radius of 3440.065 NM.
+   *
+   * @param {number} lat1 - Starting latitude in degrees
+   * @param {number} lon1 - Starting longitude in degrees
+   * @param {number} lat2 - Ending latitude in degrees
+   * @param {number} lon2 - Ending longitude in degrees
+   * @returns {number} Distance in nautical miles
+   */
   calculateDistance(lat1, lon1, lat2, lon2) {
     const R = 3440.065; // Earth radius in NM
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -107,7 +175,20 @@ export class AirportNavigation {
     return R * c;
   }
 
-  // Calculate bearing in degrees
+  /**
+   * Calculate forward azimuth bearing in degrees
+   *
+   * Returns the initial bearing from point 1 to point 2 (forward azimuth).
+   * Result is normalized to [0-360°) where 0°=North, 90°=East, 180°=South, 270°=West.
+   *
+   * Formula: θ = atan2(sin(Δλ)⋅cos(φ2), cos(φ1)⋅sin(φ2) − sin(φ1)⋅cos(φ2)⋅cos(Δλ))
+   *
+   * @param {number} lat1 - Starting latitude in degrees
+   * @param {number} lon1 - Starting longitude in degrees
+   * @param {number} lat2 - Ending latitude in degrees
+   * @param {number} lon2 - Ending longitude in degrees
+   * @returns {number} Bearing in degrees [0-360°)
+   */
   calculateBearing(lat1, lon1, lat2, lon2) {
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const lat1Rad = lat1 * Math.PI / 180;
@@ -121,7 +202,24 @@ export class AirportNavigation {
     return (bearing + 360) % 360;
   }
 
-  // Determine active runway based on wind
+  /**
+   * Determine active runway based on wind direction
+   *
+   * Selects the runway most aligned with landing INTO the wind.
+   * Considers both runway directions (e.g., 27 and 09 for same physical runway).
+   *
+   * Algorithm:
+   * 1. For each runway, calculate angular difference between runway heading and wind direction
+   * 2. Also calculate difference for reciprocal heading (opposite end)
+   * 3. Select runway with minimum angular difference
+   *
+   * Updates this.selectedRunway with the result.
+   *
+   * @param {Object} airport - Airport object containing runways array
+   * @param {Array} airport.runways - Array of runway objects with heading property
+   * @param {number} windDirection - Wind direction in degrees [0-360°)
+   * @returns {Object|null} Active runway object, or null if airport has no runways
+   */
   determineActiveRunway(airport, windDirection) {
     if (!airport.runways || airport.runways.length === 0) {
       return null;
@@ -149,7 +247,27 @@ export class AirportNavigation {
     return bestRunway;
   }
 
-  // Recommend pattern entry based on aircraft position
+  /**
+   * Recommend pattern entry based on aircraft position
+   *
+   * Determines the recommended traffic pattern entry type based on:
+   * - Aircraft position relative to airport
+   * - Runway heading
+   * - Traffic pattern side (left or right)
+   *
+   * Entry types:
+   * - 'STRAIGHT-IN': Approaching aligned with final approach course (±45°)
+   * - 'UPWIND ENTRY': Approaching from departure end (135-225° relative)
+   * - '45° TO DOWNWIND': Approaching from non-pattern side
+   * - 'CROSSWIND ENTRY': Approaching from pattern side
+   *
+   * @param {number} aircraftLat - Aircraft latitude in degrees
+   * @param {number} aircraftLon - Aircraft longitude in degrees
+   * @param {number} aircraftHeading - Aircraft heading in degrees [0-360°)
+   * @param {Object} airport - Airport object with lat/lon properties
+   * @param {Object} runway - Runway object with heading and trafficPattern properties
+   * @returns {string} Recommended entry type
+   */
   getRecommendedEntry(aircraftLat, aircraftLon, aircraftHeading, airport, runway) {
     if (!runway) return 'STRAIGHT-IN';
 
@@ -186,7 +304,34 @@ export class AirportNavigation {
     }
   }
 
-  // Get navigation data for selected airport
+  /**
+   * Get comprehensive navigation data for selected airport
+   *
+   * Computes all navigation information needed for direct-to navigation and approach:
+   * - Distance and bearing to airport
+   * - ETA based on ground speed
+   * - Active runway based on wind
+   * - Recommended pattern entry
+   * - Pattern altitude
+   *
+   * Returns null if no airport is selected.
+   *
+   * @param {number} aircraftLat - Aircraft latitude in degrees
+   * @param {number} aircraftLon - Aircraft longitude in degrees
+   * @param {number} aircraftHeading - Aircraft heading in degrees [0-360°)
+   * @param {number} aircraftGroundSpeed - Ground speed in knots (validated, defaults to 0 if invalid)
+   * @param {number} windDirection - Wind direction in degrees [0-360°) (validated, defaults to 0 if invalid)
+   * @returns {Object|null} Navigation data object or null if no airport selected
+   * @returns {Object} returns.airport - Selected airport object
+   * @returns {number} returns.distance - Distance to airport in nautical miles
+   * @returns {number} returns.bearing - Bearing to airport in degrees [0-360°)
+   * @returns {Object} returns.eta - Estimated time of arrival
+   * @returns {number} returns.eta.minutes - ETA minutes component
+   * @returns {number} returns.eta.seconds - ETA seconds component
+   * @returns {Object|null} returns.activeRunway - Active runway object (null if none)
+   * @returns {string|null} returns.recommendedEntry - Recommended entry type (null if no runway)
+   * @returns {number} returns.patternAltitude - Traffic pattern altitude in feet (default 1000)
+   */
   getNavigationData(aircraftLat, aircraftLon, aircraftHeading, aircraftGroundSpeed, windDirection) {
     if (!this.selectedAirport) {
       return null;

@@ -80,15 +80,16 @@ export class AircraftState {
 
   // Get climb rate (feet per minute)
   getClimbRate() {
-    // Transform vertical velocity from body to earth frame
+    // Transform vertical velocity from body to the earth-frame NED down axis.
     const theta = this.orientation.pitch;
     const phi = this.orientation.roll;
 
-    const w_earth = -this.velocity.u * Math.sin(theta) +
-                     this.velocity.v * Math.sin(phi) * Math.cos(theta) +
-                     this.velocity.w * Math.cos(theta) * Math.cos(phi);
+    const downVelocity = -this.velocity.u * Math.sin(theta) +
+                          this.velocity.v * Math.sin(phi) * Math.cos(theta) +
+                          this.velocity.w * Math.cos(theta) * Math.cos(phi);
 
-    return w_earth * 196.85; // m/s to ft/min
+    // Climb rate is positive upward, opposite the NED down axis.
+    return downVelocity === 0 ? 0 : -downVelocity * 196.85; // m/s to ft/min
   }
 }
 
