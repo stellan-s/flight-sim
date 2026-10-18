@@ -46,6 +46,7 @@ export class AirportNavigation {
     const airport = this.chartFeatures.airports.find(a => a.id === airportId);
     if (airport) {
       this.selectedAirport = airport;
+      this.selectedRunway = null;
       console.log(`Airport selected: ${airport.id} - ${airport.name}`);
       return airport;
     }
@@ -128,6 +129,7 @@ export class AirportNavigation {
     if (!this.selectedAirport) {
       // Select nearest
       this.selectedAirport = nearby[0].airport;
+      this.selectedRunway = null;
       return this.selectedAirport;
     }
 
@@ -141,6 +143,7 @@ export class AirportNavigation {
       const nextIndex = (currentIndex + 1) % nearby.length;
       this.selectedAirport = nearby[nextIndex].airport;
     }
+    this.selectedRunway = null;
 
     // Safely get distance for logging
     const found = nearby.find(a => a.airport.id === this.selectedAirport.id);
@@ -225,26 +228,70 @@ export class AirportNavigation {
       return null;
     }
 
-    // Find runway most aligned with wind (land into the wind)
-    let bestRunway = airport.runways[0];
-    let bestScore = 999;
+    // Find the specific runway end most aligned with the wind.
+    let bestSelection = null;
+    let bestScore = Infinity;
 
     airport.runways.forEach(runway => {
-      // Calculate angular difference between runway heading and wind direction
-      // We want to land INTO the wind, so runway heading should be close to wind direction
-      const diff1 = Math.abs(((runway.heading - windDirection + 180) % 360) - 180);
-      const reciprocal = (runway.heading + 180) % 360;
-      const diff2 = Math.abs(((reciprocal - windDirection + 180) % 360) - 180);
+      const primaryHeading = this.normalizeHeading(runway.heading);
+      const reciprocalHeading = this.normalizeHeading(primaryHeading + 180);
+      const candidates = [
+        { heading: primaryHeading, reciprocal: false },
+        { heading: reciprocalHeading, reciprocal: true }
+      ];
 
-      const minDiff = Math.min(diff1, diff2);
-      if (minDiff < bestScore) {
-        bestScore = minDiff;
-        bestRunway = runway;
-      }
+      candidates.forEach(candidate => {
+        const score = this.angularDifference(candidate.heading, windDirection);
+        if (score < bestScore) {
+          bestScore = score;
+          bestSelection = { runway, ...candidate };
+        }
+      });
     });
 
-    this.selectedRunway = bestRunway;
-    return bestRunway;
+    const { runway, heading, reciprocal } = bestSelection;
+    const runwayEnds = runway.id.split('/');
+    const runwayEndId = runwayEnds[reciprocal ? 1 : 0] ||
+      this.headingToRunwayNumber(heading);
+    const trafficPattern = runway.trafficPattern
+      ? {
+          ...runway.trafficPattern,
+          side: reciprocal
+            ? this.oppositePatternSide(runway.trafficPattern.side)
+            : runway.trafficPattern.side
+        }
+      : undefined;
+
+    this.selectedRunway = {
+      ...runway,
+      id: runwayEndId,
+      physicalRunwayId: runway.id,
+      heading,
+      reciprocal,
+      trafficPattern
+    };
+    return this.selectedRunway;
+  }
+
+  normalizeHeading(heading) {
+    return ((heading % 360) + 360) % 360;
+  }
+
+  angularDifference(firstHeading, secondHeading) {
+    const first = this.normalizeHeading(firstHeading);
+    const second = this.normalizeHeading(secondHeading);
+    return Math.abs(((first - second + 540) % 360) - 180);
+  }
+
+  headingToRunwayNumber(heading) {
+    const runwayNumber = Math.round(this.normalizeHeading(heading) / 10) || 36;
+    return runwayNumber.toString().padStart(2, '0');
+  }
+
+  oppositePatternSide(side) {
+    if (side === 'left') return 'right';
+    if (side === 'right') return 'left';
+    return side;
   }
 
   /**
@@ -276,6 +323,7 @@ export class AirportNavigation {
 
     // Calculate relative angle to runway heading
     const relativeAngle = ((bearing - runway.heading + 360) % 360);
+    const headingDifference = this.angularDifference(aircraftHeading, runway.heading);
 
     // Determine recommended entry
     // Standard entries:
@@ -289,8 +337,9 @@ export class AirportNavigation {
     if (relativeAngle >= 135 && relativeAngle <= 225) {
       // Approaching from departure end
       return 'UPWIND ENTRY';
-    } else if (relativeAngle >= 315 || relativeAngle <= 45) {
-      // Approaching from approach end
+    } else if ((relativeAngle >= 315 || relativeAngle <= 45) &&
+               headingDifference <= 45) {
+      // Approaching from the approach end and aligned with final
       return 'STRAIGHT-IN';
     } else if (patternSide === 'left' && relativeAngle >= 45 && relativeAngle < 135) {
       // Approaching from right side (45° to downwind for left pattern)

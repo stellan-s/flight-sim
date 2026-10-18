@@ -21,6 +21,43 @@ export class ChartRenderer {
     console.log('Chart mode:', mode === 'north-up' ? 'NORTH UP' : 'TRACK UP');
   }
 
+  // Rotate an existing screen-space map vector for the active chart mode.
+  rotateMapVector(x, y) {
+    if (this.rotationMode !== 'track-up') {
+      return { x, y };
+    }
+
+    const cosHeading = Math.cos(-this.aircraftHeading);
+    const sinHeading = Math.sin(-this.aircraftHeading);
+    return {
+      x: x * cosHeading - y * sinHeading,
+      y: x * sinHeading + y * cosHeading
+    };
+  }
+
+  // Project a horizontal earth-frame NED direction onto the chart canvas.
+  earthVectorToScreen(direction) {
+    return this.rotateMapVector(direction.east, -direction.north);
+  }
+
+  // Project a 3D earth-frame force using an oblique vertical axis.
+  earthForceToScreen(direction) {
+    const horizontal = this.earthVectorToScreen(direction);
+    const down = direction.down || 0;
+    return {
+      x: horizontal.x + down * 0.5,
+      y: horizontal.y + down * Math.sqrt(3) / 2
+    };
+  }
+
+  // Convert an aviation heading into a unit vector in screen coordinates.
+  headingToScreenVector(heading) {
+    return this.earthVectorToScreen({
+      north: Math.cos(heading),
+      east: Math.sin(heading)
+    });
+  }
+
   clear() {
     // White background for clean chart
     this.ctx.fillStyle = '#FFFFFF';
@@ -35,18 +72,7 @@ export class ChartRenderer {
     let dx = (lon - this.centerLon) * scale;
     let dy = -(lat - this.centerLat) * scale;
 
-    // Apply rotation for track-up mode
-    if (this.rotationMode === 'track-up') {
-      const heading = this.aircraftHeading;
-      const cos_h = Math.cos(-heading); // Negative to rotate map opposite to heading
-      const sin_h = Math.sin(-heading);
-
-      const dx_rot = dx * cos_h - dy * sin_h;
-      const dy_rot = dx * sin_h + dy * cos_h;
-
-      dx = dx_rot;
-      dy = dy_rot;
-    }
+    ({ x: dx, y: dy } = this.rotateMapVector(dx, dy));
 
     const x = this.canvas.width / 2 + dx;
     const y = this.canvas.height / 2 + dy;
@@ -124,40 +150,86 @@ export class ChartRenderer {
     this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
 
     const gridSpacing = 0.1 / this.zoom; // degrees
+    const scale = this.baseScale * this.zoom;
+    const span = Math.hypot(this.canvas.width, this.canvas.height) / scale +
+      gridSpacing * 2;
 
-    // Vertical lines (longitude)
-    const startLon = Math.floor(this.centerLon / gridSpacing) * gridSpacing;
-    for (let lon = startLon - 1; lon < startLon + 2; lon += gridSpacing) {
-      const { x } = this.latLonToPixels(this.centerLat, lon);
-      if (x >= 0 && x <= this.canvas.width) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(x, 0);
-        this.ctx.lineTo(x, this.canvas.height);
-        this.ctx.stroke();
-
-        // Add longitude label at top
-        this.ctx.textAlign = 'center';
-        const lonLabel = lon.toFixed(3) + '°';
-        this.ctx.fillText(lonLabel, x, 12);
-      }
+    const startLon = Math.floor((this.centerLon - span) / gridSpacing) * gridSpacing;
+    const endLon = this.centerLon + span;
+    for (let lon = startLon; lon <= endLon; lon += gridSpacing) {
+      const start = this.latLonToPixels(this.centerLat - span, lon);
+      const end = this.latLonToPixels(this.centerLat + span, lon);
+      this.drawGridLine(start, end, `${lon.toFixed(3)}°`, ['top', 'bottom', 'left', 'right']);
     }
 
-    // Horizontal lines (latitude)
-    const startLat = Math.floor(this.centerLat / gridSpacing) * gridSpacing;
-    for (let lat = startLat - 1; lat < startLat + 2; lat += gridSpacing) {
-      const { y } = this.latLonToPixels(lat, this.centerLon);
-      if (y >= 0 && y <= this.canvas.height) {
-        this.ctx.beginPath();
-        this.ctx.moveTo(0, y);
-        this.ctx.lineTo(this.canvas.width, y);
-        this.ctx.stroke();
-
-        // Add latitude label at left
-        this.ctx.textAlign = 'left';
-        const latLabel = lat.toFixed(3) + '°';
-        this.ctx.fillText(latLabel, 5, y - 3);
-      }
+    const startLat = Math.floor((this.centerLat - span) / gridSpacing) * gridSpacing;
+    const endLat = this.centerLat + span;
+    for (let lat = startLat; lat <= endLat; lat += gridSpacing) {
+      const start = this.latLonToPixels(lat, this.centerLon - span);
+      const end = this.latLonToPixels(lat, this.centerLon + span);
+      this.drawGridLine(start, end, `${lat.toFixed(3)}°`, ['left', 'right', 'top', 'bottom']);
     }
+  }
+
+  drawGridLine(start, end, label, edgePriority) {
+    this.ctx.beginPath();
+    this.ctx.moveTo(start.x, start.y);
+    this.ctx.lineTo(end.x, end.y);
+    this.ctx.stroke();
+
+    const intersections = this.getViewportIntersections(start, end);
+    const labelPoint = edgePriority
+      .map(edge => intersections.find(point => point.edge === edge))
+      .find(Boolean);
+
+    if (!labelPoint) return;
+
+    if (labelPoint.edge === 'top') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(label, labelPoint.x, 12);
+    } else if (labelPoint.edge === 'bottom') {
+      this.ctx.textAlign = 'center';
+      this.ctx.fillText(label, labelPoint.x, this.canvas.height - 3);
+    } else if (labelPoint.edge === 'left') {
+      this.ctx.textAlign = 'left';
+      this.ctx.fillText(label, 5, labelPoint.y - 3);
+    } else {
+      this.ctx.textAlign = 'right';
+      this.ctx.fillText(label, this.canvas.width - 5, labelPoint.y - 3);
+    }
+  }
+
+  getViewportIntersections(start, end) {
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const intersections = [];
+    const addIntersection = (x, y, edge) => {
+      const epsilon = 1e-6;
+      if (x < -epsilon || x > width + epsilon ||
+          y < -epsilon || y > height + epsilon) return;
+      if (intersections.some(point =>
+        Math.abs(point.x - x) < epsilon && Math.abs(point.y - y) < epsilon
+      )) return;
+      intersections.push({ x, y, edge });
+    };
+
+    if (Math.abs(dy) > 1e-12) {
+      let t = -start.y / dy;
+      addIntersection(start.x + t * dx, 0, 'top');
+      t = (height - start.y) / dy;
+      addIntersection(start.x + t * dx, height, 'bottom');
+    }
+
+    if (Math.abs(dx) > 1e-12) {
+      let t = -start.x / dx;
+      addIntersection(0, start.y + t * dy, 'left');
+      t = (width - start.x) / dx;
+      addIntersection(width, start.y + t * dy, 'right');
+    }
+
+    return intersections;
   }
 
   // Draw aircraft symbol (small circle with heading line)
@@ -175,11 +247,10 @@ export class ChartRenderer {
     this.ctx.stroke();
 
     // Heading line
-    // In track-up mode, aircraft always points up; in north-up, it shows actual heading
-    const heading = this.rotationMode === 'track-up' ? 0 : state.orientation.yaw;
+    const heading = this.headingToScreenVector(state.orientation.yaw);
     const lineLength = 15;
-    const endX = pos.x + Math.sin(heading) * lineLength;
-    const endY = pos.y - Math.cos(heading) * lineLength;
+    const endX = pos.x + heading.x * lineLength;
+    const endY = pos.y + heading.y * lineLength;
 
     this.ctx.beginPath();
     this.ctx.moveTo(pos.x, pos.y);
@@ -239,23 +310,15 @@ export class ChartRenderer {
         const wind = windModel.getWindAtPosition(lat, lon);
 
         // Wind direction in radians (FROM direction converted to TO direction)
-        let windToDir = (wind.direction + 180) % 360;
-
-        // In track-up mode, rotate the wind arrow by the aircraft heading
-        // so it stays aligned with the rotated map
-        if (this.rotationMode === 'track-up') {
-          const headingDeg = (this.aircraftHeading * 180 / Math.PI + 360) % 360;
-          windToDir = (windToDir - headingDeg + 360) % 360;
-        }
-
-        const windToRad = windToDir * Math.PI / 180;
+        const windToRad = ((wind.direction + 180) % 360) * Math.PI / 180;
+        const windDirection = this.headingToScreenVector(windToRad);
 
         // Arrow length based on wind speed
         const arrowLength = Math.min(wind.magnitude * 2, 40);
 
         // Arrow endpoint
-        const endX = x + Math.sin(windToRad) * arrowLength;
-        const endY = y - Math.cos(windToRad) * arrowLength;
+        const endX = x + windDirection.x * arrowLength;
+        const endY = y + windDirection.y * arrowLength;
 
         // Draw arrow line
         ctx.beginPath();
@@ -823,16 +886,17 @@ export class ChartRenderer {
 
     // Draw OBS course line (desired course - green)
     const courseRad = obs * Math.PI / 180;
+    const courseDirection = this.headingToScreenVector(courseRad);
     const lineLength = CONFIG.VOR_RADIAL_LENGTH_PIXELS;
 
     ctx.strokeStyle = '#44dd44';
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
 
-    const x1 = vorPos.x + Math.sin(courseRad) * lineLength;
-    const y1 = vorPos.y - Math.cos(courseRad) * lineLength;
-    const x2 = vorPos.x - Math.sin(courseRad) * lineLength;
-    const y2 = vorPos.y + Math.cos(courseRad) * lineLength;
+    const x1 = vorPos.x + courseDirection.x * lineLength;
+    const y1 = vorPos.y + courseDirection.y * lineLength;
+    const x2 = vorPos.x - courseDirection.x * lineLength;
+    const y2 = vorPos.y - courseDirection.y * lineLength;
 
     ctx.beginPath();
     ctx.moveTo(x1, y1);
@@ -842,8 +906,9 @@ export class ChartRenderer {
     // Draw aircraft heading vector (solid black line)
     if (aircraftHeading !== undefined) {
       const headingLength = 400; // Longer vector to show heading clearly
-      const headingX = acPos.x + Math.sin(aircraftHeading) * headingLength;
-      const headingY = acPos.y - Math.cos(aircraftHeading) * headingLength;
+      const headingDirection = this.headingToScreenVector(aircraftHeading);
+      const headingX = acPos.x + headingDirection.x * headingLength;
+      const headingY = acPos.y + headingDirection.y * headingLength;
 
       ctx.strokeStyle = '#000000';
       ctx.lineWidth = 2;
@@ -874,8 +939,8 @@ export class ChartRenderer {
 
       // Label showing heading
       const hdgDeg = Math.round((aircraftHeading * 180 / Math.PI + 360) % 360);
-      const labelX = acPos.x + Math.sin(aircraftHeading) * (headingLength / 2);
-      const labelY = acPos.y - Math.cos(aircraftHeading) * (headingLength / 2);
+      const labelX = acPos.x + headingDirection.x * (headingLength / 2);
+      const labelY = acPos.y + headingDirection.y * (headingLength / 2);
 
       ctx.font = 'bold 11px monospace';
       ctx.fillStyle = '#FFFFFF';

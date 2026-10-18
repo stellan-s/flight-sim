@@ -20,9 +20,13 @@
  * - Force components: {lift, drag, thrust, weight}
  */
 
-import { AIR_DENSITY_SEA_LEVEL, KNOTS_TO_MS } from '../utils/constants.js';
+import {
+  AIR_DENSITY_SEA_LEVEL,
+  GRAVITY,
+  KNOTS_TO_MS
+} from '../utils/constants.js';
 
-const g = 9.81; // m/s²
+const g = GRAVITY;
 
 // Standard atmosphere model
 export function getAirDensity(altitude_ft) {
@@ -62,7 +66,13 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
   if (V < 1.0) {
     return {
       body: { X: 0, Y: 0, Z: 0 },
-      components: { lift: 0, drag: 0, thrust: 0, weight: specs.mass * g, side: 0 },
+      components: {
+        lift: 0,
+        drag: 0,
+        thrust: 0,
+        weight: specs.mass * g * (specs.gravityMultiplier ?? 1),
+        side: 0
+      },
       aerodynamic: { alpha: 0, beta: 0, Cl: 0, Cd: 0, Cy: 0, q: 0, V: 0 }
     };
   }
@@ -80,9 +90,9 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
   const r_hat = V > 0 ? (state.angularVelocity.r * specs.wingspan) / (2 * V) : 0;
 
   // Control deflections (radians)
-  const elevator_rad = controls.elevator * (25 * Math.PI / 180);  // ±25°
-  const aileron_rad = controls.aileron * (20 * Math.PI / 180);    // ±20°
-  const rudder_rad = controls.rudder * (30 * Math.PI / 180);      // ±30°
+  const elevator_rad = controls.elevator * ((specs.elevatorMaxDeg ?? 25) * Math.PI / 180);
+  const aileron_rad = controls.aileron * ((specs.aileronMaxDeg ?? 20) * Math.PI / 180);
+  const rudder_rad = controls.rudder * ((specs.rudderMaxDeg ?? 30) * Math.PI / 180);
 
   // === LIFT ===
   let Cl;
@@ -91,7 +101,7 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
     Cl = specs.Cl0 + specs.Cl_alpha * alpha;
   } else {
     // Post-stall: parabolic decay
-    const k_stall = 0.5;
+    const k_stall = specs.stallDecay ?? 0.5;
     const alpha_excess = alpha - specs.stallAlpha;
     Cl = specs.Cl_max - k_stall * alpha_excess * alpha_excess;
   }
@@ -99,11 +109,11 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
   // Enforce physical limits
   Cl = Math.max(-1.5, Math.min(Cl, specs.Cl_max));
 
-  const lift = q * specs.wingArea * Cl;
+  const lift = q * specs.wingArea * Cl * (specs.liftMultiplier ?? 1);
 
   // === DRAG ===
   const Cd = specs.Cd0 + specs.K * Cl * Cl;
-  const drag = q * specs.wingArea * Cd;
+  const drag = q * specs.wingArea * Cd * (specs.dragMultiplier ?? 1);
 
   // === SIDE FORCE ===
   const Cy = specs.Cy_beta * beta +
@@ -112,16 +122,16 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
              specs.Cy_da * aileron_rad +
              specs.Cy_dr * rudder_rad;
 
-  const side = q * specs.wingArea * Cy;
+  const side = q * specs.wingArea * Cy * (specs.sideForceMultiplier ?? 1);
 
   // === THRUST ===
   // Engine power decreases with altitude
   const powerFactor = Math.pow(rho / 1.225, specs.powerLapseRate);
   const availableThrust = specs.maxThrust * powerFactor;
-  const thrust = controls.throttle * availableThrust;
+  const thrust = controls.throttle * availableThrust * (specs.thrustMultiplier ?? 1);
 
   // === WEIGHT ===
-  const weight = specs.mass * g;
+  const weight = specs.mass * g * (specs.gravityMultiplier ?? 1);
 
   // Transform from wind axes to body axes
   // Wind axes: X=into relative wind, Z=perpendicular down
@@ -193,9 +203,9 @@ export function calculateMoments(state, specs, controls, forces) {
   const r_hat = V > 0 ? (r_rate * b) / (2 * V) : 0;
 
   // Convert control inputs to radians (max deflections)
-  const elevator_rad = controls.elevator * (25 * Math.PI / 180);  // ±25° elevator
-  const aileron_rad = controls.aileron * (20 * Math.PI / 180);    // ±20° aileron
-  const rudder_rad = controls.rudder * (30 * Math.PI / 180);      // ±30° rudder
+  const elevator_rad = controls.elevator * ((specs.elevatorMaxDeg ?? 25) * Math.PI / 180);
+  const aileron_rad = controls.aileron * ((specs.aileronMaxDeg ?? 20) * Math.PI / 180);
+  const rudder_rad = controls.rudder * ((specs.rudderMaxDeg ?? 30) * Math.PI / 180);
 
   // === PITCHING MOMENT (M) ===
   // Cm = Cm0 + Cm_alpha * α + Cm_q * q̂ + Cm_de * δe
@@ -204,7 +214,7 @@ export function calculateMoments(state, specs, controls, forces) {
              specs.Cm_q * q_hat +
              specs.Cm_de * elevator_rad;
 
-  const M_pitch = q_dyn * S * c * Cm;
+  const M_pitch = q_dyn * S * c * Cm * (specs.pitchMomentMultiplier ?? 1);
 
   // === ROLLING MOMENT (L) ===
   // Cl = Cl_beta * β + Cl_p * p̂ + Cl_r * r̂ + Cl_da * δa + Cl_dr * δr
@@ -214,7 +224,7 @@ export function calculateMoments(state, specs, controls, forces) {
              specs.Cl_da * aileron_rad +
              specs.Cl_dr * rudder_rad;
 
-  const L_roll = q_dyn * S * b * Cl;
+  const L_roll = q_dyn * S * b * Cl * (specs.rollMomentMultiplier ?? 1);
 
   // === YAWING MOMENT (N) ===
   // Cn = Cn_beta * β + Cn_p * p̂ + Cn_r * r̂ + Cn_da * δa + Cn_dr * δr
@@ -224,7 +234,7 @@ export function calculateMoments(state, specs, controls, forces) {
              specs.Cn_da * aileron_rad +
              specs.Cn_dr * rudder_rad;
 
-  const N_yaw = q_dyn * S * b * Cn;
+  const N_yaw = q_dyn * S * b * Cn * (specs.yawMomentMultiplier ?? 1);
 
   return {
     L: L_roll,   // Roll moment

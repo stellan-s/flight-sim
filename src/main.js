@@ -14,17 +14,22 @@
 
 import { AircraftState, AircraftSpecs, Controls } from './core/aircraft.js';
 import { PhysicsEngine } from './core/physics.js';
-import { calculateTrueAirspeedForIAS } from './core/forces.js';
+import { calculateLevelFlightTrim } from './core/trim.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
 import { EnergyDiagram } from './rendering/energy-diagram.js';
+import { ConfigurationPanel } from './ui/configuration-panel.js';
 import { InputHandler } from './controls/input.js';
 import { WindModel } from './navigation/wind.js';
 import { VORNavigation } from './navigation/vor.js';
 import { AirportNavigation } from './navigation/airport-nav.js';
 import { CONFIG } from './config.js';
-import { DEG_TO_RAD } from './utils/constants.js';
+import { DEG_TO_RAD, MS_TO_KNOTS } from './utils/constants.js';
+import {
+  calculateGroundVelocity,
+  getHorizontalSpeed
+} from './utils/coordinates.js';
 
 class FlightSimulator {
   constructor() {
@@ -42,20 +47,24 @@ class FlightSimulator {
 
     // Set the configured initial flight condition.
     this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
-    this.state.velocity.u = calculateTrueAirspeedForIAS(
-      CONFIG.INITIAL_SPEED,
-      CONFIG.INITIAL_ALTITUDE
+    const initialTrim = calculateLevelFlightTrim(
+      this.specs,
+      CONFIG.INITIAL_ALTITUDE,
+      CONFIG.INITIAL_SPEED
     );
-    this.state.velocity.v = 0;    // No lateral velocity
-    this.state.velocity.w = 0;    // Zero vertical velocity (will settle naturally)
-    this.state.orientation.pitch = CONFIG.INITIAL_PITCH * DEG_TO_RAD;
+    this.state.velocity.u = initialTrim.velocity.u;
+    this.state.velocity.v = initialTrim.velocity.v;
+    this.state.velocity.w = initialTrim.velocity.w;
+    this.state.orientation.pitch = initialTrim.pitch +
+      CONFIG.INITIAL_PITCH_OFFSET * DEG_TO_RAD;
     this.state.orientation.roll = CONFIG.INITIAL_ROLL * DEG_TO_RAD;
     this.state.orientation.yaw = CONFIG.INITIAL_HEADING * DEG_TO_RAD;
     this.state.angularVelocity.p = 0;
     this.state.angularVelocity.q = 0;
     this.state.angularVelocity.r = 0;
-    this.controls.throttle = 0.70; // Cruise power
-    this.controls.elevator = 0.0; // Start neutral
+    this.controls.throttle = initialTrim.throttle;
+    this.controls.elevator = initialTrim.elevator;
+    this.initialTrim = initialTrim;
 
     // Debug mode
     this.debugMode = CONFIG.DEBUG_MODE;
@@ -86,8 +95,11 @@ class FlightSimulator {
     // Input
     this.input = new InputHandler(this.controls, this.chart, null, this, this.vectors);
 
-    // Set initial elevator trim for cruise (start neutral, adjust as needed)
-    this.input.elevatorTrim = 0.0; // Start neutral - use PageDown to add nose-up trim
+    // Full runtime configuration console
+    this.configPanel = new ConfigurationPanel(this);
+
+    // Hold the calculated elevator trim when the pitch control is released.
+    this.input.elevatorTrim = initialTrim.elevator;
 
     // Timing
     this.lastTime = performance.now();
@@ -156,6 +168,7 @@ class FlightSimulator {
     console.log('SYSTEM:');
     console.log('  P or SPACE: Pause/Resume');
     console.log('  H or ?: Help overlay (scrollable VOR navigation guide)');
+    console.log('  C or ENTER: Full flight-model configuration');
     console.log('  Mouse Wheel / Arrows: Scroll help when open');
     console.log('');
     console.log('FLIGHT CONTROLS:');
@@ -316,6 +329,160 @@ class FlightSimulator {
     }
   }
 
+  advanceTime(milliseconds) {
+    const steps = Math.max(1, Math.round(milliseconds / (this.dt * 1000)));
+
+    for (let step = 0; step < steps; step++) {
+      this.input.update(this.dt);
+      if (this.paused) continue;
+
+      const substepDt = this.dt / this.physicsSubsteps;
+      for (let i = 0; i < this.physicsSubsteps; i++) {
+        if (typeof this.wind.updateDynamic === 'function') {
+          this.wind.updateDynamic(substepDt);
+        }
+        this.lastForces = this.physics.update(substepDt);
+      }
+
+      this.energyDiagram.update(this.state, this.dt);
+      this.flightTime += this.dt;
+    }
+
+    this.chart.setCenter(this.state.position.lat, this.state.position.lon);
+    this.lastTime = performance.now();
+    this.accumulator = 0;
+    this.render();
+  }
+
+  retrimCurrentFlight() {
+    const altitude = this.state.position.altitude;
+    const indicatedAirspeed = Math.max(1, this.state.getIAS());
+    const trim = calculateLevelFlightTrim(this.specs, altitude, indicatedAirspeed);
+
+    this.state.velocity.u = trim.velocity.u;
+    this.state.velocity.v = trim.velocity.v;
+    this.state.velocity.w = trim.velocity.w;
+    this.state.orientation.pitch = trim.pitch;
+    this.state.angularVelocity.p = 0;
+    this.state.angularVelocity.q = 0;
+    this.state.angularVelocity.r = 0;
+    this.controls.elevator = trim.elevator;
+    this.controls.aileron = 0;
+    this.controls.rudder = 0;
+    this.controls.throttle = trim.throttle;
+    this.input.elevatorTrim = trim.elevator;
+    this.initialTrim = trim;
+    this.lastForces = null;
+    return trim;
+  }
+
+  resetConfiguredFlight() {
+    this.state.position.lat = 0;
+    this.state.position.lon = 0;
+    this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
+
+    const trim = calculateLevelFlightTrim(
+      this.specs,
+      CONFIG.INITIAL_ALTITUDE,
+      CONFIG.INITIAL_SPEED
+    );
+    this.state.velocity.u = trim.velocity.u;
+    this.state.velocity.v = trim.velocity.v;
+    this.state.velocity.w = trim.velocity.w;
+    this.state.orientation.pitch = trim.pitch + CONFIG.INITIAL_PITCH_OFFSET * DEG_TO_RAD;
+    this.state.orientation.roll = CONFIG.INITIAL_ROLL * DEG_TO_RAD;
+    this.state.orientation.yaw = CONFIG.INITIAL_HEADING * DEG_TO_RAD;
+    this.state.angularVelocity.p = 0;
+    this.state.angularVelocity.q = 0;
+    this.state.angularVelocity.r = 0;
+
+    this.controls.elevator = trim.elevator;
+    this.controls.aileron = 0;
+    this.controls.rudder = 0;
+    this.controls.throttle = trim.throttle;
+    this.input.elevatorTrim = trim.elevator;
+    this.wind.time = 0;
+    this.wind.setBaseWind(CONFIG.INITIAL_WIND_DIRECTION, CONFIG.INITIAL_WIND_SPEED);
+    this.flightTime = 0;
+    this.initialTrim = trim;
+    this.lastForces = null;
+    this.chart.setCenter(0, 0);
+    return trim;
+  }
+
+  renderGameToText() {
+    const toDegrees = radians => radians * 180 / Math.PI;
+    const round = (value, digits = 3) => Number(value.toFixed(digits));
+    const components = this.lastForces?.components;
+    const groundVelocity = calculateGroundVelocity(
+      this.state.velocity,
+      this.state.orientation,
+      {
+        north: this.wind.windNorth,
+        east: this.wind.windEast,
+        down: this.wind.windDown
+      }
+    );
+
+    return JSON.stringify({
+      coordinateSystem: 'lat/lon degrees; altitude feet MSL; body velocity m/s (forward/right/down)',
+      mode: {
+        paused: this.paused,
+        helpVisible: this.showHelp,
+        configuration: this.configPanel.getState(),
+        helpScrollOffset: round(this.helpScrollOffset, 1),
+        mapRotation: this.chart.rotationMode,
+        vectorMode: this.vectors.vectorMode,
+        zoom: round(this.chart.zoom, 1)
+      },
+      aircraft: {
+        latitude: round(this.state.position.lat, 6),
+        longitude: round(this.state.position.lon, 6),
+        altitudeFt: round(this.state.position.altitude, 1),
+        iasKt: round(this.state.getIAS(), 1),
+        groundSpeedKt: round(getHorizontalSpeed(groundVelocity) * MS_TO_KNOTS, 1),
+        verticalSpeedFpm: round(this.state.getClimbRate(), 1),
+        headingDeg: round((toDegrees(this.state.orientation.yaw) + 360) % 360, 1),
+        pitchDeg: round(toDegrees(this.state.orientation.pitch), 1),
+        rollDeg: round(toDegrees(this.state.orientation.roll), 1),
+        velocityBody: {
+          u: round(this.state.velocity.u),
+          v: round(this.state.velocity.v),
+          w: round(this.state.velocity.w)
+        }
+      },
+      controls: {
+        elevator: round(this.controls.elevator),
+        aileron: round(this.controls.aileron),
+        rudder: round(this.controls.rudder),
+        throttle: round(this.controls.throttle),
+        elevatorTrim: round(this.input.elevatorTrim)
+      },
+      wind: {
+        directionFromDeg: round((this.wind.direction + 360) % 360, 1),
+        speedKt: round(this.wind.speed, 1)
+      },
+      navigation: {
+        selectedVor: this.vorNav?.selectedVOR?.id ?? null,
+        obsDeg: this.vorNav?.obs ?? null,
+        selectedAirport: this.airportNav?.selectedAirport?.id ?? null
+      },
+      forcesNewtons: components ? {
+        lift: round(components.lift, 1),
+        weight: round(components.weight, 1),
+        thrust: round(components.thrust, 1),
+        drag: round(components.drag, 1),
+        side: round(components.side, 1)
+      } : null,
+      momentsNewtonMeters: this.lastForces?.moments ? {
+        roll: round(this.lastForces.moments.L, 1),
+        pitch: round(this.lastForces.moments.M, 1),
+        yaw: round(this.lastForces.moments.N, 1)
+      } : null,
+      flightTimeSeconds: round(this.flightTime, 2)
+    });
+  }
+
   render() {
     // Update aircraft heading for track-up mode
     this.chart.aircraftHeading = this.state.orientation.yaw;
@@ -387,12 +554,16 @@ class FlightSimulator {
 
     // Draw airport navigation aids if airport is selected
     if (this.airportNav && this.airportNav.selectedAirport) {
-      // Calculate ground speed for ETA (TAS + wind effect)
-      const tas = this.state.getVelocityMagnitude() * 1.94384; // m/s to knots
-      const windSpeedKts = this.wind.speed; // Already in knots
-      // Approximate ground speed (proper vector calculation would be more accurate)
-      // For now, use TAS as approximation - wind effect is handled by bearing calculation
-      const groundSpeed = tas; // TODO: Add full vector-based ground speed calculation
+      const groundVelocity = calculateGroundVelocity(
+        this.state.velocity,
+        this.state.orientation,
+        {
+          north: this.wind.windNorth,
+          east: this.wind.windEast,
+          down: this.wind.windDown
+        }
+      );
+      const groundSpeed = getHorizontalSpeed(groundVelocity) * MS_TO_KNOTS;
 
       // Get navigation data
       const airportNavData = this.airportNav.getNavigationData(
@@ -456,6 +627,9 @@ class FlightSimulator {
     if (this.showHelp) {
       this.drawHelpOverlay();
     }
+
+    // Configuration is always the topmost full-screen surface.
+    this.configPanel.draw(this.chart.ctx, this.canvas);
   }
 
   drawPauseOverlay() {
@@ -484,7 +658,7 @@ class FlightSimulator {
     ctx.font = '16px monospace';
     ctx.fillText('Press P to resume', canvas.width / 2, canvas.height / 2 + 50);
     ctx.fillText('Press H for VOR navigation help (scrollable)', canvas.width / 2, canvas.height / 2 + 75);
-    ctx.fillText('Q/E: Change OBS | N/T: Map mode | 1-4: Zoom', canvas.width / 2, canvas.height / 2 + 100);
+    ctx.fillText('C or ENTER: Configure all simulator parameters', canvas.width / 2, canvas.height / 2 + 100);
 
     ctx.font = '12px monospace';
     ctx.fillStyle = '#AAAAAA';
@@ -584,6 +758,8 @@ class FlightSimulator {
     ctx.fillText('P or SPACE             Pause/Resume', x + 10, y);
     y += lineHeight;
     ctx.fillText('H or ?                 Toggle this help', x + 10, y);
+    y += lineHeight;
+    ctx.fillText('C or ENTER             Open full configuration console', x + 10, y);
     y += lineHeight + 15;
 
     // VOR Navigation Guide
@@ -749,5 +925,7 @@ class FlightSimulator {
 
 // Start simulation when page loads
 window.addEventListener('DOMContentLoaded', () => {
-  new FlightSimulator();
+  const simulator = new FlightSimulator();
+  window.render_game_to_text = () => simulator.renderGameToText();
+  window.advanceTime = milliseconds => simulator.advanceTime(milliseconds);
 });

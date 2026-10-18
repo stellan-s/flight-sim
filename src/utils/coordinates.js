@@ -83,6 +83,30 @@ export function earthToBody(earthVec, orientation) {
 }
 
 /**
+ * Calculate ground-relative velocity from body-frame airspeed and earth-frame wind.
+ */
+export function calculateGroundVelocity(bodyVelocity, orientation, windEarth = {}) {
+  const airVelocity = bodyToEarth(
+    {
+      x: bodyVelocity.u,
+      y: bodyVelocity.v,
+      z: bodyVelocity.w
+    },
+    orientation
+  );
+
+  return {
+    north: airVelocity.north + (windEarth.north || 0),
+    east: airVelocity.east + (windEarth.east || 0),
+    down: airVelocity.down + (windEarth.down || 0)
+  };
+}
+
+export function getHorizontalSpeed(earthVelocity) {
+  return Math.hypot(earthVelocity.north, earthVelocity.east);
+}
+
+/**
  * Normalize angle to range [-PI, PI]
  *
  * @param {number} angle - Angle in radians

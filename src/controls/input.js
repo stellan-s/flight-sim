@@ -22,6 +22,11 @@ export class InputHandler {
     this.rudderRate = 0.4;     // units per second
     this.throttleRate = 0.3;   // per second
     this.trimRate = 0.05;      // trim units per second
+    this.elevatorReturnRate = 1.5;
+    this.aileronReturnRate = 4.0;
+    this.rudderReturnRate = 4.0;
+    this.trimMin = -0.3;
+    this.trimMax = 0.3;
 
     // Trim settings
     this.elevatorTrim = 0;     // -1 to +1
@@ -44,6 +49,21 @@ export class InputHandler {
 
   setupKeyboard() {
     document.addEventListener('keydown', (e) => {
+      if (this.simulator?.configPanel?.isOpen) {
+        e.preventDefault();
+        this.keys = {};
+        this.simulator.configPanel.handleKey(e);
+        return;
+      }
+
+      if (this.simulator?.configPanel &&
+          (e.key === 'c' || e.key === 'C' || e.key === 'Enter')) {
+        e.preventDefault();
+        this.keys = {};
+        this.simulator.configPanel.open();
+        return;
+      }
+
       this.keys[e.key] = true;
     });
 
@@ -74,6 +94,11 @@ export class InputHandler {
     // Mouse wheel for zoom (or help scrolling)
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
+
+      if (this.simulator?.configPanel?.isOpen) {
+        this.simulator.configPanel.moveRow(e.deltaY > 0 ? 1 : -1);
+        return;
+      }
 
       // If help is visible, scroll the help instead of zooming
       if (this.simulator && this.simulator.showHelp) {
@@ -153,10 +178,10 @@ export class InputHandler {
     // Elevator trim (PageUp/PageDown)
     if (this.keys['PageUp']) {
       // Trim nose down (negative)
-      this.elevatorTrim = Math.max(-0.3, this.elevatorTrim - this.trimRate * dt);
+      this.elevatorTrim = Math.max(this.trimMin, this.elevatorTrim - this.trimRate * dt);
     } else if (this.keys['PageDown']) {
       // Trim nose up (positive)
-      this.elevatorTrim = Math.min(0.3, this.elevatorTrim + this.trimRate * dt);
+      this.elevatorTrim = Math.min(this.trimMax, this.elevatorTrim + this.trimRate * dt);
     }
 
     // Pitch control (Arrow Up/Down - INVERTED Y-AXIS)
@@ -169,9 +194,8 @@ export class InputHandler {
       this.controls.elevator = Math.min(1, this.controls.elevator + this.pitchRate * dt);
     } else {
       // Return to trim position smoothly
-      const returnRate = 1.5; // how fast to return to trim (reduced for stability)
       const diff = this.elevatorTrim - this.controls.elevator;
-      this.controls.elevator += diff * returnRate * dt;
+      this.controls.elevator += diff * this.elevatorReturnRate * dt;
       if (Math.abs(diff) < 0.01) this.controls.elevator = this.elevatorTrim;
     }
 
@@ -183,8 +207,7 @@ export class InputHandler {
       this.controls.aileron = Math.min(1, this.controls.aileron + this.rollRate * dt);
     } else {
       // Return to neutral smoothly
-      const returnRate = 4.0;
-      this.controls.aileron -= this.controls.aileron * returnRate * dt;
+      this.controls.aileron -= this.controls.aileron * this.aileronReturnRate * dt;
       if (Math.abs(this.controls.aileron) < 0.01) this.controls.aileron = 0;
     }
 
@@ -196,8 +219,7 @@ export class InputHandler {
       this.controls.rudder = Math.min(1, this.controls.rudder + this.rudderRate * dt);
     } else {
       // Return to neutral smoothly
-      const returnRate = 4.0;
-      this.controls.rudder -= this.controls.rudder * returnRate * dt;
+      this.controls.rudder -= this.controls.rudder * this.rudderReturnRate * dt;
       if (Math.abs(this.controls.rudder) < 0.01) this.controls.rudder = 0;
     }
 

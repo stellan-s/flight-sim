@@ -15,7 +15,7 @@ export const CONFIG = {
   INITIAL_ALTITUDE: 5000,  // ft MSL
   INITIAL_SPEED: 100,      // knots IAS
   INITIAL_HEADING: 0,      // degrees
-  INITIAL_PITCH: 0,        // degrees
+  INITIAL_PITCH_OFFSET: 0, // degrees from calculated level-flight trim
   INITIAL_ROLL: 0,         // degrees
 
   // Initial wind conditions

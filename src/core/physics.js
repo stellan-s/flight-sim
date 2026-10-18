@@ -28,7 +28,6 @@
 import { calculateAerodynamicForces, calculateMoments } from './forces.js';
 
 const g = 9.81; // m/s²
-const EARTH_RADIUS = 6371000; // meters
 
 export class PhysicsEngine {
   constructor(state, specs, controls) {
@@ -141,8 +140,9 @@ export class PhysicsEngine {
     const v_down = v_down_air + this.windEarth.down;
 
     // Convert to lat/lon rates (simplified flat earth)
-    const dlat_dt = (v_north / EARTH_RADIUS) * (180 / Math.PI);
-    const dlon_dt = (v_east / (EARTH_RADIUS * Math.cos(state.position.lat * Math.PI / 180))) * (180 / Math.PI);
+    const earthRadius = this.specs.earthRadius ?? 6371000;
+    const dlat_dt = (v_north / earthRadius) * (180 / Math.PI);
+    const dlon_dt = (v_east / (earthRadius * Math.cos(state.position.lat * Math.PI / 180))) * (180 / Math.PI);
     const dalt_dt = -v_down * 3.28084; // m/s to ft/s
 
     return {
@@ -215,17 +215,18 @@ export class PhysicsEngine {
     this.state.orientation.yaw = this.normalizeAngle(this.state.orientation.yaw);
 
     // Safety limits to prevent runaway instability
-    const MAX_PITCH_RATE = 2.0; // rad/s (~115 deg/s)
-    const MAX_ROLL_RATE = 3.0;  // rad/s
-    const MAX_YAW_RATE = 2.0;   // rad/s
+    const MAX_PITCH_RATE = this.specs.maxPitchRate ?? 2.0;
+    const MAX_ROLL_RATE = this.specs.maxRollRate ?? 3.0;
+    const MAX_YAW_RATE = this.specs.maxYawRate ?? 2.0;
 
     this.state.angularVelocity.p = Math.max(-MAX_ROLL_RATE, Math.min(MAX_ROLL_RATE, this.state.angularVelocity.p));
     this.state.angularVelocity.q = Math.max(-MAX_PITCH_RATE, Math.min(MAX_PITCH_RATE, this.state.angularVelocity.q));
     this.state.angularVelocity.r = Math.max(-MAX_YAW_RATE, Math.min(MAX_YAW_RATE, this.state.angularVelocity.r));
 
     // Prevent ground collision (simple)
-    if (this.state.position.altitude < 0) {
-      this.state.position.altitude = 0;
+    const groundAltitude = this.specs.groundAltitude ?? 0;
+    if (this.state.position.altitude < groundAltitude) {
+      this.state.position.altitude = groundAltitude;
       this.state.velocity.u = 0;
       this.state.velocity.w = 0;
       this.state.angularVelocity.p = 0;
@@ -233,8 +234,19 @@ export class PhysicsEngine {
       this.state.angularVelocity.r = 0;
     }
 
-    // Return last computed forces for rendering
-    return k1.forces;
+    // Recompute final forces and moments for rendering and diagnostics.
+    const finalForces = calculateAerodynamicForces(
+      this.state,
+      this.specs,
+      this.controls
+    );
+    const finalMoments = calculateMoments(
+      this.state,
+      this.specs,
+      this.controls,
+      finalForces
+    );
+    return { ...finalForces, moments: finalMoments };
   }
 
   cloneState(state) {

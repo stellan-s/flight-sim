@@ -104,6 +104,16 @@ export class AircraftSpecs {
         chord: 1.47,             // m (mean aerodynamic chord)
         maxThrust: 2400,         // N (180 HP @ sea level)
 
+        // Runtime force tuning (1.0 = physical model as authored)
+        gravityMultiplier: 1.0,
+        liftMultiplier: 1.0,
+        dragMultiplier: 1.0,
+        thrustMultiplier: 1.0,
+        sideForceMultiplier: 1.0,
+        rollMomentMultiplier: 1.0,
+        pitchMomentMultiplier: 1.0,
+        yawMomentMultiplier: 1.0,
+
         // Aerodynamic coefficients (clean configuration)
         Cl0: 0.21,               // Lift coefficient at α=0
         Cl_alpha: 4.8,           // Lift curve slope (per radian)
@@ -111,6 +121,7 @@ export class AircraftSpecs {
         Cd0: 0.028,              // Zero-lift drag coefficient
         K: 0.054,                // Induced drag factor
         stallAlpha: 0.262,       // rad (~15 degrees)
+        stallDecay: 0.5,         // Post-stall lift decay
 
         // Stability derivatives (longitudinal)
         Cm0: 0.02,               // Pitching moment coefficient at α=0
@@ -147,6 +158,18 @@ export class AircraftSpecs {
         // Engine
         propEfficiency: 0.8,     // Propeller efficiency
         powerLapseRate: 0.12,    // Power reduction per 1000ft
+
+        // Maximum control-surface deflections
+        elevatorMaxDeg: 25,
+        aileronMaxDeg: 20,
+        rudderMaxDeg: 30,
+
+        // Numerical safety limits
+        maxPitchRate: 2.0,       // rad/s
+        maxRollRate: 3.0,        // rad/s
+        maxYawRate: 2.0,         // rad/s
+        groundAltitude: 0,       // ft MSL
+        earthRadius: 6371000,    // m
 
         // Limits (for reference, not enforced)
         Vne: 163,                // Never exceed speed (knots)

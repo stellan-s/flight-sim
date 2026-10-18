@@ -1,6 +1,10 @@
 // Force vector visualization
 
-import { bodyToEarth } from '../utils/coordinates.js';
+import {
+  bodyToEarth,
+  calculateGroundVelocity,
+  getHorizontalSpeed
+} from '../utils/coordinates.js';
 import { CONFIG } from '../config.js';
 
 export class VectorRenderer {
@@ -23,16 +27,19 @@ export class VectorRenderer {
     const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
 
     // Vector length (scale force to pixels)
-    const magnitude = force;
+    const magnitude = Math.abs(force);
     const length = magnitude * scale;
 
     // Calculate direction in earth frame
     let dx = 0, dy = 0;
 
     if (direction) {
-      // Use provided direction vector (earth frame: north, east, down)
-      dx = direction.east;
-      dy = -direction.north; // Canvas Y is inverted
+      // Use the chart's shared oblique 3D force projection.
+      ({ x: dx, y: dy } = this.chart.earthForceToScreen(direction));
+      if (force < 0) {
+        dx = -dx;
+        dy = -dy;
+      }
     } else {
       // Default based on label
       if (label === 'WEIGHT') {
@@ -92,7 +99,40 @@ export class VectorRenderer {
       textColor = '#888888';
     }
 
-    this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(magnitude)}N`, bgColor, textColor);
+    this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(force)}N`, bgColor, textColor);
+  }
+
+  drawMomentArrow(state, moment, label, color, radius, startAngle) {
+    if (!Number.isFinite(moment) || Math.abs(moment) < 0.1) return;
+
+    const ctx = this.chart.ctx;
+    const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
+    const direction = Math.sign(moment);
+    const sweep = direction * Math.PI * 0.65;
+    const endAngle = startAngle + sweep;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, radius, startAngle, endAngle, direction < 0);
+    ctx.stroke();
+
+    const endX = pos.x + Math.cos(endAngle) * radius;
+    const endY = pos.y + Math.sin(endAngle) * radius;
+    const tangent = endAngle + (direction > 0 ? Math.PI / 2 : -Math.PI / 2);
+    this.chart.drawArrowhead(ctx, endX, endY, tangent, 7);
+    ctx.restore();
+
+    const labelDistance = radius + 18;
+    this.chart.drawLabel(
+      pos.x + Math.cos(endAngle) * labelDistance,
+      pos.y + Math.sin(endAngle) * labelDistance,
+      label,
+      '#FFFFFF',
+      color
+    );
   }
 
   // Draw all force vectors
@@ -106,7 +146,7 @@ export class VectorRenderer {
 
     // LIFT: perpendicular to velocity in body frame
     const liftBody = {
-      x: -Math.sin(alpha),
+      x: Math.sin(alpha),
       y: 0,
       z: -Math.cos(alpha)
     };
@@ -120,9 +160,13 @@ export class VectorRenderer {
     const dragBody = {
       x: -Math.cos(alpha),
       y: 0,
-      z: Math.sin(alpha)
+      z: -Math.sin(alpha)
     };
     const dragEarth = bodyToEarth(dragBody, state.orientation);
+
+    // SIDE: signed lateral aerodynamic force in the body Y direction.
+    const sideBody = { x: 0, y: 1, z: 0 };
+    const sideEarth = bodyToEarth(sideBody, state.orientation);
 
     // WEIGHT: straight down in earth frame
     const weightEarth = { north: 0, east: 0, down: 1 };
@@ -156,6 +200,9 @@ export class VectorRenderer {
       this.drawForceVector(state, weightValue, 'WEIGHT', '#888888', weightEarth, scale);
       this.drawForceVector(state, forces.components.thrust, 'THRUST', '#4488dd', thrustEarth, scale);
       this.drawForceVector(state, forces.components.drag, 'DRAG', '#dd4444', dragEarth, scale);
+      if (Math.abs(forces.components.side) >= 1) {
+        this.drawForceVector(state, forces.components.side, 'SIDE', '#8844aa', sideEarth, scale);
+      }
 
       // Resultant
       const resultant = Math.sqrt(
@@ -166,6 +213,12 @@ export class VectorRenderer {
 
       const resultantColor = resultant < 500 ? '#44aa44' : '#dd4444';
       this.drawForceVector(state, resultant, 'RESULTANT', resultantColor, resultantEarth, scale);
+
+      if (forces.moments) {
+        this.drawMomentArrow(state, forces.moments.L, 'L', '#8844aa', 24, Math.PI);
+        this.drawMomentArrow(state, forces.moments.M, 'M', '#008899', 31, -Math.PI / 2);
+        this.drawMomentArrow(state, forces.moments.N, 'N', '#aa6600', 38, 0);
+      }
     }
 
     // Draw motion vectors (navigation) if in 'nav' or 'all' mode
@@ -211,16 +264,13 @@ export class VectorRenderer {
     }
 
     // 3. GROUND TRACK VECTOR (Velocity + Wind) - brown/orange
-    const groundNorth = velEarth.north + windNorth;
-    const groundEast = velEarth.east + windEast;
-    const groundDown = velEarth.down + windDown;
-    const groundSpeed = Math.sqrt(groundNorth * groundNorth + groundEast * groundEast + groundDown * groundDown);
-
-    const groundEarth = {
-      north: groundNorth,
-      east: groundEast,
-      down: groundDown
-    };
+    const groundEarth = calculateGroundVelocity(
+      state.velocity,
+      state.orientation,
+      { north: windNorth, east: windEast, down: windDown }
+    );
+    const groundSpeed = getHorizontalSpeed(groundEarth);
+    groundEarth.down = 0;
     this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', '#CC6600', groundEarth, scale);
   }
 
@@ -229,22 +279,8 @@ export class VectorRenderer {
     const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
     const ctx = this.chart.ctx;
 
-    // Convert NED to screen coordinates
-    let dx = direction.east;
-    let dy = direction.north;
-
-    // Apply rotation for track-up mode
-    if (this.chart.rotationMode === 'track-up') {
-      const heading = this.chart.aircraftHeading;
-      const cos_h = Math.cos(-heading);
-      const sin_h = Math.sin(-heading);
-
-      const dx_rot = dx * cos_h - dy * sin_h;
-      const dy_rot = dx * sin_h + dy * cos_h;
-
-      dx = dx_rot;
-      dy = dy_rot;
-    }
+    // Convert NED to screen coordinates using the chart's shared projection.
+    let { x: dx, y: dy } = this.chart.earthVectorToScreen(direction);
 
     // Scale and convert to screen space
     const length = magnitude * scale;
@@ -253,7 +289,7 @@ export class VectorRenderer {
     const mag = Math.sqrt(dx * dx + dy * dy);
     if (mag > 0) {
       dx = (dx / mag) * length;
-      dy = -(dy / mag) * length; // Negative because screen Y is inverted
+      dy = (dy / mag) * length;
     }
 
     const endX = pos.x + dx;
@@ -325,6 +361,10 @@ export class VectorRenderer {
 
       data.push(`LIFT: ${Math.round(lift)} N (${liftRatio}%)`);
       data.push(`Cl: ${Cl.toFixed(3)} @ α=${alpha.toFixed(1)}°`);
+      data.push(`SIDE: ${Math.round(forces.components.side)} N`);
+      if (forces.moments) {
+        data.push(`MOM: L${Math.round(forces.moments.L)} M${Math.round(forces.moments.M)} N${Math.round(forces.moments.N)} N·m`);
+      }
       data.push(``);
     }
 

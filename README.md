@@ -71,28 +71,76 @@ flight-sim/
         └── morse-data.js     # Morse code table
 ```
 
+## Running Locally
+
+The simulator uses native browser modules, so serve it over HTTP:
+
+```bash
+npm start
+```
+
+Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
+
+## Testing
+
+Run the dependency-free Node test suite:
+
+```bash
+npm test
+```
+
+Run tests plus JavaScript syntax validation:
+
+```bash
+npm run check
+```
+
 ## Controls
 
 ### Flight Controls
 - **Arrow Keys**: Pitch and roll control
-  - ↑/↓: Elevator (pitch up/down)
+  - ↑/↓: Elevator (pitch down/up)
   - ←/→: Aileron (roll left/right)
 - **A/D**: Rudder (yaw left/right)
 - **W/S**: Throttle (increase/decrease)
 - **Page Up/Down**: Elevator trim
+- **Home**: Reset elevator trim
 
 ### Navigation
 - **Right-click on VOR**: Tune VOR station (plays morse code)
 - **Q/E**: Adjust OBS course ±10°
+- **L / Shift+L**: Cycle airports / clear the airport selection
 
 ### View Controls
 - **Mouse Wheel**: Zoom in/out
 - **N/T**: Toggle map mode (North-up / Track-up)
-- **Mouse Drag**: Pan the map
+- **1/2/3/4**: Select the 1×/3×/5×/10× zoom preset
+- **V**: Cycle all, energy, and navigation vector overlays
 
 ### Simulation
 - **P / Space**: Pause/resume simulation
-- **H / ?**: Show help panel (if implemented)
+- **H / ?**: Show/hide the help panel
+- **C / Enter**: Open the full runtime configuration console
+
+### Configuration Console
+
+The configuration console pauses the simulation and exposes the live aircraft
+state, force and moment gains, aerodynamic coefficients, airframe geometry,
+controls, wind, display settings, navigation data, airports, runways, VORs,
+and obstacles.
+
+- **Up / Down**: Select a parameter
+- **Left / Right**: Switch parameter group
+- **Plus / Minus**: Change the selected value
+- **Alt + Plus / Minus**: Change by ten increments
+- **Enter**: Type an exact number, edit text, toggle an option, or run an action
+- **Page Up / Page Down**: Move eight rows
+- **Home / End**: Jump to the first or last row
+- **Escape / C**: Close the console and restore the previous pause state
+
+Changes apply immediately to the running simulator. The `RETRIM` and `RESTART`
+actions in the Session group let you settle the aircraft after changing the
+flight model or apply edited initial conditions.
 
 ## Coordinate Systems
 

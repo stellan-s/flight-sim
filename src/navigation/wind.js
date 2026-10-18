@@ -6,6 +6,7 @@ export class WindModel {
     this.windNorth = 0;   // m/s (positive = from north)
     this.windEast = 7.7;  // m/s (positive = from east, ~15 knots)
     this.windDown = 0;
+    this.verticalWind = 0; // m/s, positive down in NED coordinates
 
     // Wind direction and speed (meteorological convention: direction FROM which wind blows)
     this.direction = 270; // degrees (270 = from west, blowing east)
@@ -34,7 +35,7 @@ export class WindModel {
     // North component: negative of north component of FROM direction
     this.windNorth = -speed_ms * Math.cos(dir_rad);
     this.windEast = -speed_ms * Math.sin(dir_rad);
-    this.windDown = 0;
+    this.windDown = this.verticalWind;
   }
 
   // Update dynamic wind (call each frame with dt)
