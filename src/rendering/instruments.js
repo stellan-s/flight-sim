@@ -1,164 +1,144 @@
-// Navigation instruments (CDI, etc.)
+// Compact flight instruments.
 
 import { CONFIG } from '../config.js';
+
+const RAD_TO_DEG = 180 / Math.PI;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+
+export function getPitchLadderMarks(pitchDeg, range = CONFIG.PITCH_SCALE_RANGE) {
+  const start = Math.ceil((pitchDeg - range) / 5) * 5;
+  const end = Math.floor((pitchDeg + range) / 5) * 5;
+  const marks = [];
+  for (let degrees = start; degrees <= end; degrees += 5) marks.push(degrees);
+  return marks;
+}
 
 export class InstrumentRenderer {
   constructor(chartRenderer) {
     this.chart = chartRenderer;
   }
 
-  // Draw Attitude Indicator - Simple horizon line across screen
-  drawAttitudeIndicator(state, x, y) {
-    const ctx = this.chart.ctx;
+  // Draw a compact moving pitch ladder with fixed aircraft references.
+  drawAttitudeIndicator(state) {
+    if (!CONFIG.SHOW_PITCH_INDICATOR) return;
 
-    const pitch = state.orientation.pitch * 180 / Math.PI; // degrees
-    const roll = state.orientation.roll; // radians
-    const alpha = state.getAlpha() * 180 / Math.PI; // angle of attack in degrees
+    const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
+    const canvas = this.chart.canvas;
+    const pitch = state.orientation.pitch * RAD_TO_DEG;
+    const roll = state.orientation.roll;
+    const rollDeg = roll * RAD_TO_DEG;
+    const alpha = state.getAlpha() * RAD_TO_DEG;
+
+    const width = Math.min(
+      Math.max(140, CONFIG.PITCH_INDICATOR_WIDTH),
+      Math.max(96, canvas.width - 16)
+    );
+    const height = Math.min(
+      Math.max(110, CONFIG.PITCH_INDICATOR_HEIGHT),
+      Math.max(90, canvas.height - 16)
+    );
+    const x = clamp(CONFIG.PITCH_INDICATOR_X, 8, Math.max(8, canvas.width - width - 8));
+    const y = clamp(CONFIG.PITCH_INDICATOR_Y, 8, Math.max(8, canvas.height - height - 8));
+    const headerHeight = 24;
+    const footerHeight = 20;
+    const inner = {
+      left: x + 8,
+      right: x + width - 8,
+      top: y + headerHeight,
+      bottom: y + height - footerHeight
+    };
+    const centerX = (inner.left + inner.right) / 2;
+    const centerY = (inner.top + inner.bottom) / 2;
+    const innerWidth = inner.right - inner.left;
+
+    const borderColor = alpha > 15
+      ? palette.danger
+      : alpha > 13 ? palette.warning : palette.border;
 
     ctx.save();
-
-    // Translate to center of canvas
-    const centerX = this.chart.canvas.width / 2;
-    const centerY = this.chart.canvas.height / 2;
-    ctx.translate(centerX, centerY);
-
-    // Rotate for roll
-    ctx.rotate(-roll);
-
-    // Calculate vertical offset based on configured pitch scale.
-    const pitchOffset = pitch * CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
-
-    // Draw horizon line across entire screen width
-    const lineLength = Math.max(this.chart.canvas.width, this.chart.canvas.height) * 1.5;
-
-    // Color based on angle of attack - red if approaching/in stall
-    const STALL_WARNING_AOA = 13; // degrees - warning threshold
-    const STALL_AOA = 15; // degrees - critical stall threshold
-
-    if (alpha > STALL_AOA) {
-      ctx.strokeStyle = '#dd0000'; // Red - stall!
-    } else if (alpha > STALL_WARNING_AOA) {
-      ctx.strokeStyle = '#ff8800'; // Orange - stall warning
-    } else {
-      ctx.strokeStyle = '#000000'; // Black - normal
-    }
-
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = palette.panel;
+    ctx.fillRect(x, y, width, height);
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
     ctx.beginPath();
-    ctx.moveTo(-lineLength, pitchOffset);
-    ctx.lineTo(lineLength, pitchOffset);
+    ctx.moveTo(x, y + headerHeight);
+    ctx.lineTo(x + width, y + headerHeight);
+    ctx.moveTo(x, y + height - footerHeight);
+    ctx.lineTo(x + width, y + height - footerHeight);
+    ctx.strokeStyle = palette.gridLabel;
     ctx.stroke();
 
-    // Add small tick marks on the horizon line
-    ctx.lineWidth = 1;
-    const tickSpacing = 100;
-    const numTicks = Math.floor(lineLength / tickSpacing);
-
-    for (let i = -numTicks; i <= numTicks; i++) {
-      if (i === 0) continue; // Skip center
-      const tickX = i * tickSpacing;
-      ctx.beginPath();
-      ctx.moveTo(tickX, pitchOffset - 5);
-      ctx.lineTo(tickX, pitchOffset + 5);
-      ctx.stroke();
-    }
-
-    // Draw pitch reference line (second horizontal line)
-    // This line is always at the center (0), showing where level flight would be
-    // The horizon line moves up/down based on pitch
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.7;
-
-    // Draw horizontal reference line at center (0 pitch reference)
-    ctx.beginPath();
-    ctx.moveTo(-lineLength, 0);
-    ctx.lineTo(lineLength, 0);
-    ctx.stroke();
-
-    // Draw pitch value label on the reference line (far left)
-    ctx.globalAlpha = 1.0;
-    ctx.font = 'bold 11px "B612 Mono", monospace';
+    ctx.font = 'bold 10px "B612 Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = palette.muted;
     ctx.textAlign = 'left';
+    ctx.fillText('PITCH', x + 8, y + headerHeight / 2);
+    ctx.fillStyle = palette.foreground;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`, x + width - 8, y + headerHeight / 2);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(inner.left, inner.top, innerWidth, inner.bottom - inner.top);
+    ctx.clip();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(-roll);
+    ctx.font = '8px "B612 Mono", monospace';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    const pitchText = `${pitch.toFixed(1)}°`;
-    const textMetrics = ctx.measureText(pitchText);
-    const padding = 3;
-    const labelX = -this.chart.canvas.width / 2 + 40; // Far left position
+    const scale = CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
+    const centerGap = 18;
+    for (const mark of getPitchLadderMarks(pitch)) {
+      const markY = (pitch - mark) * scale;
+      const isHorizon = mark === 0;
+      const major = Math.abs(mark) % 10 === 0;
+      const halfLength = isHorizon ? innerWidth * 0.43 : major ? 38 : 25;
 
-    // Background box
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(labelX - padding, -7, textMetrics.width + padding * 2, 14);
+      ctx.strokeStyle = isHorizon ? palette.foreground : major ? palette.foreground : palette.muted;
+      ctx.lineWidth = isHorizon ? 1.5 : 1;
+      ctx.beginPath();
+      ctx.moveTo(-halfLength, markY);
+      ctx.lineTo(-centerGap / 2, markY);
+      ctx.moveTo(centerGap / 2, markY);
+      ctx.lineTo(halfLength, markY);
+      ctx.stroke();
 
-    // Border
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(labelX - padding, -7, textMetrics.width + padding * 2, 14);
-
-    // Text
-    ctx.fillStyle = '#000000';
-    ctx.fillText(pitchText, labelX, 0);
-
+      if (major && !isHorizon) {
+        ctx.fillStyle = palette.foreground;
+        ctx.fillText(String(Math.abs(mark)), -halfLength - 11, markY);
+        ctx.fillText(String(Math.abs(mark)), halfLength + 11, markY);
+      }
+    }
     ctx.restore();
 
-    // Draw pitch scale on screen edges (not rotated)
-    ctx.save();
-    ctx.strokeStyle = '#000000';
-    ctx.fillStyle = '#000000';
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.8;
-    ctx.font = 'bold 12px "B612 Mono", monospace';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
-
-    // Left side pitch scale
-    const leftX = 20;
-    const rightX = this.chart.canvas.width - 20;
-    const pixelsPerDegree = CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
-
-    // Draw ticks every 10 degrees across the configured pitch range.
-    for (let deg = -CONFIG.PITCH_SCALE_RANGE; deg <= CONFIG.PITCH_SCALE_RANGE; deg += 10) {
-      const yPos = centerY - (deg * pixelsPerDegree);
-
-      // Only draw if on screen
-      if (yPos < 10 || yPos > this.chart.canvas.height - 10) continue;
-
-      // Left tick
-      ctx.beginPath();
-      ctx.moveTo(leftX, yPos);
-      ctx.lineTo(leftX + 10, yPos);
-      ctx.stroke();
-
-      // Left label
-      ctx.fillText(deg > 0 ? `+${deg}°` : `${deg}°`, leftX - 2, yPos);
-
-      // Right tick
-      ctx.textAlign = 'left';
-      ctx.beginPath();
-      ctx.moveTo(rightX - 10, yPos);
-      ctx.lineTo(rightX, yPos);
-      ctx.stroke();
-
-      // Right label
-      ctx.fillText(deg > 0 ? `+${deg}°` : `${deg}°`, rightX + 2, yPos);
-      ctx.textAlign = 'right';
-    }
-
-    // Draw 0 degree reference line (centerline)
-    ctx.strokeStyle = '#666666';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 5]);
+    // Fixed aircraft reference: the ladder moves, these wings do not.
+    ctx.strokeStyle = palette.accent;
+    ctx.fillStyle = palette.accent;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(leftX + 15, centerY);
-    ctx.lineTo(leftX + 50, centerY);
-    ctx.moveTo(rightX - 50, centerY);
-    ctx.lineTo(rightX - 15, centerY);
+    ctx.moveTo(centerX - 38, centerY);
+    ctx.lineTo(centerX - 11, centerY);
+    ctx.lineTo(centerX - 5, centerY + 5);
+    ctx.moveTo(centerX + 38, centerY);
+    ctx.lineTo(centerX + 11, centerY);
+    ctx.lineTo(centerX + 5, centerY + 5);
     ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, 2.5, 0, Math.PI * 2);
+    ctx.fill();
 
+    ctx.font = '9px "B612 Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = palette.muted;
+    ctx.textAlign = 'left';
+    ctx.fillText('BANK', x + 8, y + height - footerHeight / 2);
+    ctx.fillStyle = palette.foreground;
+    ctx.textAlign = 'right';
+    ctx.fillText(`${rollDeg >= 0 ? '+' : ''}${rollDeg.toFixed(1)}°`, x + width - 8, y + height - footerHeight / 2);
     ctx.restore();
   }
 }

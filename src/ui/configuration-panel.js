@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { CHART_THEME_NAMES } from '../rendering/chart-themes.js';
 
 const RAD_TO_DEG = 180 / Math.PI;
 const DEG_TO_RAD = Math.PI / 180;
@@ -397,6 +398,11 @@ export class ConfigurationPanel {
       description: 'Chart transform, overlays, vector scaling and instrument layout.',
       items: [
         heading('CHART'),
+        enumItem('Default map theme', () => CONFIG.DEFAULT_MAP_THEME,
+          value => { CONFIG.DEFAULT_MAP_THEME = value; }, CHART_THEME_NAMES),
+        enumItem('Map theme', () => sim.chart.theme,
+          value => sim.chart.setTheme(value), CHART_THEME_NAMES,
+          'Complete live chart palette: background, grid, labels and navigation colors.'),
         numericProperty(CONFIG, 'DEFAULT_ZOOM', 'Default zoom', { step: 0.1, min: 0.01, max: 1000, precision: 1, unit: 'x' }),
         enumItem('Default map rotation', () => CONFIG.DEFAULT_ROTATION_MODE,
           value => { CONFIG.DEFAULT_ROTATION_MODE = value; }, ['north-up', 'track-up']),
@@ -419,7 +425,13 @@ export class ConfigurationPanel {
         numericProperty(CONFIG, 'VELOCITY_VECTOR_SCALE', 'Velocity vector scale', { step: 0.1, min: 0, max: 100, precision: 1 }),
         numericProperty(CONFIG, 'VOR_RADIAL_LENGTH_PIXELS', 'VOR radial length', { step: 100, min: 0, max: 100000, unit: 'px' }),
         heading('INSTRUMENTS / LAYOUT'),
-        numericProperty(CONFIG, 'PITCH_SCALE_PIXELS_PER_DEG', 'Pitch ladder scale', { step: 0.5, min: 0.1, max: 100, precision: 1, unit: 'px/deg' }),
+        boolItem('Pitch indicator', () => CONFIG.SHOW_PITCH_INDICATOR,
+          value => { CONFIG.SHOW_PITCH_INDICATOR = value; }),
+        numericProperty(CONFIG, 'PITCH_INDICATOR_X', 'Pitch indicator left', { step: 5, min: 0, max: 4000, unit: 'px' }),
+        numericProperty(CONFIG, 'PITCH_INDICATOR_Y', 'Pitch indicator top', { step: 5, min: 0, max: 4000, unit: 'px' }),
+        numericProperty(CONFIG, 'PITCH_INDICATOR_WIDTH', 'Pitch indicator width', { step: 10, min: 140, max: 1000, unit: 'px' }),
+        numericProperty(CONFIG, 'PITCH_INDICATOR_HEIGHT', 'Pitch indicator height', { step: 10, min: 110, max: 1000, unit: 'px' }),
+        numericProperty(CONFIG, 'PITCH_SCALE_PIXELS_PER_DEG', 'Pitch ladder scale', { step: 0.5, min: 0.5, max: 20, precision: 1, unit: 'px/deg' }),
         numericProperty(CONFIG, 'PITCH_SCALE_RANGE', 'Pitch ladder range', { step: 5, min: 5, max: 180, unit: 'deg' }),
         numericProperty(CONFIG, 'STATE_PANEL_X', 'State panel right inset', { step: 10, min: 0, max: 4000, unit: 'px' }),
         numericProperty(CONFIG, 'STATE_PANEL_Y', 'State panel top inset', { step: 10, min: 0, max: 4000, unit: 'px' }),

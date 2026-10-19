@@ -145,6 +145,7 @@ export class EnergyDiagram {
     }
 
     const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
     const canvasWidth = this.chart.canvas.width;
     const canvasHeight = this.chart.canvas.height;
 
@@ -185,7 +186,7 @@ export class EnergyDiagram {
     };
 
     // Draw grid lines
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    ctx.strokeStyle = palette.grid;
     ctx.lineWidth = 0.5;
     const numGridLines = 5;
     for (let i = 0; i <= numGridLines; i++) {
@@ -199,7 +200,7 @@ export class EnergyDiagram {
     // Draw zero reference line if in range
     if (yMin <= 0 && yMax >= 0) {
       const zeroY = energyToY(0);
-      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.strokeStyle = palette.gridLabel;
       ctx.lineWidth = 1;
       ctx.setLineDash([5, 3]);
       ctx.beginPath();
@@ -232,12 +233,12 @@ export class EnergyDiagram {
     };
 
     // Draw lines (back to front)
-    drawLine(this.totalEnergy, '#000000', 1); // Total - black
-    drawLine(this.potentialEnergy, '#4488dd', 1); // Potential - blue
-    drawLine(this.kineticEnergy, '#dd4444', 1); // Kinetic - red
+    drawLine(this.totalEnergy, palette.energyTotal, 1);
+    drawLine(this.potentialEnergy, palette.energyPotential, 1);
+    drawLine(this.kineticEnergy, palette.energyKinetic, 1);
 
     // Draw Y-axis labels
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.foreground;
     ctx.font = '8px "B612 Mono", monospace';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
@@ -259,37 +260,37 @@ export class EnergyDiagram {
     ctx.textBaseline = 'top';
 
     // Total energy
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = palette.energyTotal;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(legendX, legendY + 5);
     ctx.lineTo(legendX + 20, legendY + 5);
     ctx.stroke();
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.energyTotal;
     ctx.fillText('TOTAL', legendX + 25, legendY);
 
     // Potential energy
-    ctx.strokeStyle = '#4488dd';
+    ctx.strokeStyle = palette.energyPotential;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(legendX + legendSpacing, legendY + 5);
     ctx.lineTo(legendX + legendSpacing + 20, legendY + 5);
     ctx.stroke();
-    ctx.fillStyle = '#4488dd';
+    ctx.fillStyle = palette.energyPotential;
     ctx.fillText('PE', legendX + legendSpacing + 25, legendY);
 
     // Kinetic energy
-    ctx.strokeStyle = '#dd4444';
+    ctx.strokeStyle = palette.energyKinetic;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(legendX + legendSpacing * 2, legendY + 5);
     ctx.lineTo(legendX + legendSpacing * 2 + 20, legendY + 5);
     ctx.stroke();
-    ctx.fillStyle = '#dd4444';
+    ctx.fillStyle = palette.energyKinetic;
     ctx.fillText('KE', legendX + legendSpacing * 2 + 25, legendY);
 
     // Title
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.foreground;
     ctx.font = '9px "B612 Mono", monospace';
     ctx.textAlign = 'left';
     ctx.fillText('ENERGY TREND (J/kg)', diagramX, diagramY + this.margin.top + 5);
@@ -301,7 +302,7 @@ export class EnergyDiagram {
 
     ctx.font = '8px "B612 Mono", monospace';
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.foreground;
     const valueX = diagramX + diagramWidth;
     const valueY = diagramY + this.height - 8;
     ctx.fillText(

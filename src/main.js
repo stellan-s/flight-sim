@@ -432,6 +432,8 @@ class FlightSimulator {
         configuration: this.configPanel.getState(),
         helpScrollOffset: round(this.helpScrollOffset, 1),
         mapRotation: this.chart.rotationMode,
+        mapTheme: this.chart.theme,
+        pitchIndicatorVisible: CONFIG.SHOW_PITCH_INDICATOR,
         vectorMode: this.vectors.vectorMode,
         zoom: round(this.chart.zoom, 1)
       },
@@ -588,9 +590,8 @@ class FlightSimulator {
 
     this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
 
-    // Draw attitude indicator near the aircraft
-    const aircraftPos = this.chart.latLonToPixels(this.state.position.lat, this.state.position.lon);
-    this.instruments.drawAttitudeIndicator(this.state, aircraftPos.x - 40, aircraftPos.y - 40);
+    // Draw the compact pitch/bank indicator in its configured screen corner.
+    this.instruments.drawAttitudeIndicator(this.state);
 
     // Draw force vectors
     if (this.lastForces) {

@@ -1,6 +1,7 @@
 // Aviation chart rendering (Jeppesen/Navigraph style)
 
 import { CONFIG } from '../config.js';
+import { CHART_THEME_NAMES, getChartTheme } from './chart-themes.js';
 
 export class ChartRenderer {
   constructor(canvas) {
@@ -10,6 +11,10 @@ export class ChartRenderer {
     this.centerLat = 0;
     this.centerLon = 0;
     this.rotationMode = CONFIG.DEFAULT_ROTATION_MODE;
+    this.theme = CHART_THEME_NAMES.includes(CONFIG.DEFAULT_MAP_THEME)
+      ? CONFIG.DEFAULT_MAP_THEME
+      : 'paper';
+    this.palette = getChartTheme(this.theme);
     this.aircraftHeading = 0; // For track-up mode
 
     // Chart scale: pixels per degree at zoom=1
@@ -19,6 +24,14 @@ export class ChartRenderer {
   setRotationMode(mode) {
     this.rotationMode = mode;
     console.log('Chart mode:', mode === 'north-up' ? 'NORTH UP' : 'TRACK UP');
+  }
+
+  setTheme(name) {
+    if (!CHART_THEME_NAMES.includes(name)) return false;
+    this.theme = name;
+    this.palette = getChartTheme(name);
+    console.log('Map theme:', name.toUpperCase());
+    return true;
   }
 
   // Rotate an existing screen-space map vector for the active chart mode.
@@ -59,8 +72,7 @@ export class ChartRenderer {
   }
 
   clear() {
-    // White background for clean chart
-    this.ctx.fillStyle = '#FFFFFF';
+    this.ctx.fillStyle = this.palette.background;
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
@@ -143,11 +155,10 @@ export class ChartRenderer {
 
   // Draw coordinate grid (Jeppesen style)
   drawGrid() {
-    // Subtle gray grid lines
-    this.ctx.strokeStyle = 'rgba(100, 100, 100, 0.2)';
+    this.ctx.strokeStyle = this.palette.grid;
     this.ctx.lineWidth = 0.5;
     this.ctx.font = '9px "B612 Mono", monospace';
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+    this.ctx.fillStyle = this.palette.gridLabel;
 
     const gridSpacing = 0.1 / this.zoom; // degrees
     const scale = this.baseScale * this.zoom;
@@ -236,8 +247,8 @@ export class ChartRenderer {
   drawAircraft(state) {
     const pos = this.latLonToPixels(state.position.lat, state.position.lon);
 
-    this.ctx.strokeStyle = '#000000';
-    this.ctx.fillStyle = '#FFFFFF';
+    this.ctx.strokeStyle = this.palette.heading;
+    this.ctx.fillStyle = this.palette.panelSolid;
     this.ctx.lineWidth = 1;
 
     // Circle
@@ -259,7 +270,9 @@ export class ChartRenderer {
   }
 
   // Draw text with background
-  drawLabel(x, y, text, bgColor = '#FFFFFF', textColor = '#000000') {
+  drawLabel(x, y, text, bgColor = null, textColor = null) {
+    bgColor ??= this.palette.panelSolid;
+    textColor ??= this.palette.foreground;
     this.ctx.font = '11px "B612 Mono", monospace';
     this.ctx.textBaseline = 'middle';
     const metrics = this.ctx.measureText(text);
@@ -299,8 +312,8 @@ export class ChartRenderer {
 
     ctx.save();
     ctx.globalAlpha = 0.3;
-    ctx.strokeStyle = '#000000';
-    ctx.fillStyle = '#000000';
+    ctx.strokeStyle = this.palette.wind;
+    ctx.fillStyle = this.palette.wind;
     ctx.lineWidth = 1;
 
     // Draw wind arrows on a grid
@@ -356,7 +369,7 @@ export class ChartRenderer {
     const climb = Math.round(state.getClimbRate());
 
     this.ctx.font = '14px monospace';
-    this.ctx.fillStyle = '#000000';
+    this.ctx.fillStyle = this.palette.foreground;
 
     // Top line instruments
     let text = `ALT ${altitude} FT    ZOOM ${zoom.toFixed(1)}x    IAS ${ias} KT    HDG ${heading}°    VS ${climb > 0 ? '+' : ''}${climb} FPM`;
@@ -380,7 +393,7 @@ export class ChartRenderer {
     // Very far from center - minimal rendering
     if (distRatio > 0.8) {
       ctx.save();
-      ctx.fillStyle = '#4444AA';
+      ctx.fillStyle = this.palette.vor;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 2, 0, 2 * Math.PI);
       ctx.fill();
@@ -389,9 +402,8 @@ export class ChartRenderer {
     }
 
     ctx.save();
-    // Black and white VOR symbol
-    ctx.strokeStyle = '#000000';
-    ctx.fillStyle = '#FFFFFF';
+    ctx.strokeStyle = this.palette.vor;
+    ctx.fillStyle = this.palette.panelSolid;
     ctx.lineWidth = 1.5;
 
     // Hexagon
@@ -422,7 +434,7 @@ export class ChartRenderer {
     // Label (only if reasonably close)
     if (distRatio < 0.7) {
       ctx.font = 'bold 10px "B612 Mono", monospace';
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.vor;
       ctx.textBaseline = 'middle';
       ctx.fillText(id, pos.x + 18, pos.y - 8);
       ctx.font = '9px "B612 Mono", monospace';
@@ -431,7 +443,7 @@ export class ChartRenderer {
       // Morse code identifier
       const morse = this.textToMorse(id);
       ctx.font = '9px "B612 Mono", monospace';
-      ctx.fillStyle = '#666666';
+      ctx.fillStyle = this.palette.muted;
       ctx.fillText(morse, pos.x + 18, pos.y + 14);
     }
 
@@ -517,7 +529,7 @@ export class ChartRenderer {
     const perpAngle = angle + Math.PI / 2;
 
     // 1. Draw runway outline (bold black lines like airport diagram)
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = this.palette.runway;
     ctx.lineWidth = 3;
     ctx.lineCap = 'square';
 
@@ -536,7 +548,7 @@ export class ChartRenderer {
     ctx.stroke();
 
     // 2. Draw centerline (single solid line)
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = this.palette.runway;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(pos1.x, pos1.y);
@@ -544,7 +556,7 @@ export class ChartRenderer {
     ctx.stroke();
 
     // 3. Draw threshold markings (perpendicular bars at ends)
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = this.palette.runway;
     ctx.lineWidth = 2.5;
 
     [pos1, pos2].forEach(pos => {
@@ -558,7 +570,7 @@ export class ChartRenderer {
 
     // 4. Draw runway numbers (always visible at zoom > 3)
     if (this.zoom > 3) {
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.runway;
       ctx.font = 'bold 12px "B612 Mono", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -572,12 +584,12 @@ export class ChartRenderer {
                     pos1.y + offsetDist * Math.sin(angle + Math.PI));
       ctx.rotate(angle - Math.PI / 2);
 
-      // Draw white background for readability
+      // Draw a theme surface behind the runway number for readability.
       const textMetrics = ctx.measureText(endpoints.primaryNumber);
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillStyle = this.palette.panelSolid;
       ctx.fillRect(-textMetrics.width/2 - 2, -8, textMetrics.width + 4, 16);
 
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.runway;
       ctx.fillText(endpoints.primaryNumber, 0, 0);
       ctx.restore();
 
@@ -587,12 +599,12 @@ export class ChartRenderer {
                     pos2.y + offsetDist * Math.sin(angle));
       ctx.rotate(angle + Math.PI / 2);
 
-      // Draw white background for readability
+      // Draw a theme surface behind the runway number for readability.
       const textMetrics2 = ctx.measureText(endpoints.reciprocalNumber);
-      ctx.fillStyle = '#FFFFFF';
+      ctx.fillStyle = this.palette.panelSolid;
       ctx.fillRect(-textMetrics2.width/2 - 2, -8, textMetrics2.width + 4, 16);
 
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.runway;
       ctx.fillText(endpoints.reciprocalNumber, 0, 0);
       ctx.restore();
     }
@@ -647,9 +659,9 @@ export class ChartRenderer {
     const base = this.latLonToPixels(baseLat, baseLon);
     const finalStart = this.latLonToPixels(endpoints.lat2, endpoints.lon2);
 
-    // Draw pattern (green if highlighted, gray if not)
+    // Draw pattern with the active palette's selected and muted colors.
     ctx.save();
-    ctx.strokeStyle = highlight ? '#00FF00' : '#666666';
+    ctx.strokeStyle = highlight ? this.palette.selected : this.palette.muted;
     ctx.lineWidth = highlight ? 2.5 : 1.5;
     ctx.setLineDash([6, 3]);
 
@@ -669,7 +681,7 @@ export class ChartRenderer {
 
     // Draw direction arrows at corners
     ctx.setLineDash([]);
-    ctx.fillStyle = highlight ? '#00FF00' : '#666666';
+    ctx.fillStyle = highlight ? this.palette.selected : this.palette.muted;
     const arrowSize = highlight ? 8 : 6;
 
     // Arrow at crosswind turn
@@ -687,7 +699,7 @@ export class ChartRenderer {
     // Draw leg labels if zoomed in (brighter green if highlighted)
     if (this.zoom > 5) {
       ctx.font = '9px "B612 Mono", monospace';
-      ctx.fillStyle = highlight ? '#00aa00' : '#000000';
+      ctx.fillStyle = highlight ? this.palette.selectedText : this.palette.foreground;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
@@ -702,11 +714,10 @@ export class ChartRenderer {
 
       labels.forEach(label => {
         const metrics = ctx.measureText(label.text);
-        // White background
-        ctx.fillStyle = '#FFFFFF';
+        ctx.fillStyle = this.palette.panelSolid;
         ctx.fillRect(label.x - metrics.width/2 - 2, label.y - 6, metrics.width + 4, 12);
         // Text
-        ctx.fillStyle = highlight ? '#00aa00' : '#000000';
+        ctx.fillStyle = highlight ? this.palette.selectedText : this.palette.foreground;
         ctx.fillText(label.text, label.x, label.y);
       });
     }
@@ -733,7 +744,7 @@ export class ChartRenderer {
     if (distRatio > 0.8 && !alwaysShowFull) {
       // Very far from center - minimal rendering (small dot only)
       ctx.save();
-      ctx.fillStyle = highlight ? '#00FF00' : '#666666';
+      ctx.fillStyle = highlight ? this.palette.selected : this.palette.muted;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, highlight ? 3 : 2, 0, 2 * Math.PI);
       ctx.fill();
@@ -749,8 +760,8 @@ export class ChartRenderer {
     } else {
       // At low zoom or far distance, show simple airport symbol (black circle)
       ctx.save();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = highlight ? '#00FF00' : '#000000';
+      ctx.fillStyle = this.palette.panelSolid;
+      ctx.strokeStyle = highlight ? this.palette.selected : this.palette.airport;
       ctx.lineWidth = highlight ? 3 : 2;
 
       // Circle (for airport symbol)
@@ -769,9 +780,8 @@ export class ChartRenderer {
       ctx.textBaseline = 'middle';
       const textMetrics = ctx.measureText(airport.id);
 
-      // White background box with border (green if highlighted)
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = highlight ? '#00FF00' : '#000000';
+      ctx.fillStyle = this.palette.panelSolid;
+      ctx.strokeStyle = highlight ? this.palette.selected : this.palette.airport;
       ctx.lineWidth = highlight ? 2 : 1;
       const padding = 2;
       const boxX = pos.x + 10;
@@ -779,8 +789,7 @@ export class ChartRenderer {
       ctx.fillRect(boxX - padding, boxY, textMetrics.width + padding * 2, 14);
       ctx.strokeRect(boxX - padding, boxY, textMetrics.width + padding * 2, 14);
 
-      // Text (green if highlighted)
-      ctx.fillStyle = highlight ? '#00aa00' : '#000000';
+      ctx.fillStyle = highlight ? this.palette.selectedText : this.palette.foreground;
       ctx.fillText(airport.id, boxX, pos.y);
 
       ctx.restore();
@@ -805,7 +814,7 @@ export class ChartRenderer {
     // Very far from center - minimal rendering
     if (distRatio > 0.8) {
       ctx.save();
-      ctx.fillStyle = '#AA4444';
+      ctx.fillStyle = this.palette.obstacle;
       ctx.beginPath();
       ctx.arc(pos.x, pos.y, 1, 0, 2 * Math.PI);
       ctx.fill();
@@ -814,8 +823,8 @@ export class ChartRenderer {
     }
 
     ctx.save();
-    ctx.strokeStyle = '#000000';
-    ctx.fillStyle = '#000000';
+    ctx.strokeStyle = this.palette.obstacle;
+    ctx.fillStyle = this.palette.obstacle;
     ctx.lineWidth = 1;
 
     // Inverted T symbol
@@ -874,8 +883,8 @@ export class ChartRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    // Dashed line from VOR through aircraft (current radial - blue)
-    ctx.strokeStyle = '#4488dd';
+    // Dashed line from VOR through aircraft (current radial).
+    ctx.strokeStyle = this.palette.radial;
     ctx.lineWidth = 2;
     ctx.setLineDash([10, 5]);
 
@@ -884,12 +893,12 @@ export class ChartRenderer {
     ctx.lineTo(acPos.x, acPos.y);
     ctx.stroke();
 
-    // Draw OBS course line (desired course - green)
+    // Draw OBS course line (desired course).
     const courseRad = obs * Math.PI / 180;
     const courseDirection = this.headingToScreenVector(courseRad);
     const lineLength = CONFIG.VOR_RADIAL_LENGTH_PIXELS;
 
-    ctx.strokeStyle = '#44dd44';
+    ctx.strokeStyle = this.palette.course;
     ctx.lineWidth = 2;
     ctx.setLineDash([5, 5]);
 
@@ -903,14 +912,14 @@ export class ChartRenderer {
     ctx.lineTo(x2, y2);
     ctx.stroke();
 
-    // Draw aircraft heading vector (solid black line)
+      // Draw aircraft heading vector.
     if (aircraftHeading !== undefined) {
       const headingLength = 400; // Longer vector to show heading clearly
       const headingDirection = this.headingToScreenVector(aircraftHeading);
       const headingX = acPos.x + headingDirection.x * headingLength;
       const headingY = acPos.y + headingDirection.y * headingLength;
 
-      ctx.strokeStyle = '#000000';
+      ctx.strokeStyle = this.palette.heading;
       ctx.lineWidth = 2;
       ctx.setLineDash([]); // Solid line
 
@@ -923,7 +932,7 @@ export class ChartRenderer {
       const arrowSize = 10;
       const angle = Math.atan2(headingY - acPos.y, headingX - acPos.x);
 
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.heading;
       ctx.beginPath();
       ctx.moveTo(headingX, headingY);
       ctx.lineTo(
@@ -943,8 +952,8 @@ export class ChartRenderer {
       const labelY = acPos.y + headingDirection.y * (headingLength / 2);
 
       ctx.font = 'bold 11px monospace';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.strokeStyle = '#000000';
+      ctx.fillStyle = this.palette.panelSolid;
+      ctx.strokeStyle = this.palette.heading;
       ctx.lineWidth = 3;
       ctx.textAlign = 'center';
       const text = `HDG ${hdgDeg.toString().padStart(3, '0')}°`;
@@ -966,7 +975,7 @@ export class ChartRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    ctx.strokeStyle = '#4488dd';
+    ctx.strokeStyle = this.palette.radial;
     ctx.lineWidth = 1;
     ctx.setLineDash([5, 3]);
 
@@ -976,7 +985,7 @@ export class ChartRenderer {
 
     // DME label
     ctx.font = '10px monospace';
-    ctx.fillStyle = '#4488dd';
+    ctx.fillStyle = this.palette.radial;
     ctx.fillText(`${distanceNM.toFixed(0)} NM`, vorPos.x + radiusPx + 5, vorPos.y);
 
     ctx.restore();
@@ -992,14 +1001,14 @@ export class ChartRenderer {
 
     ctx.font = '12px "B612 Mono", monospace';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = this.palette.foreground;
 
     const modeText = this.rotationMode === 'north-up' ? 'NORTH UP' : 'TRACK UP';
     const helpText = this.rotationMode === 'north-up' ? '(Press T for Track-Up)' : '(Press N for North-Up)';
 
     ctx.fillText(`MAP: ${modeText}`, x, y);
     ctx.font = '10px "B612 Mono", monospace';
-    ctx.fillStyle = '#666666';
+    ctx.fillStyle = this.palette.muted;
     ctx.fillText(helpText, x, y + 15);
 
     ctx.restore();
@@ -1021,7 +1030,7 @@ export class ChartRenderer {
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
     ctx.font = '12px "B612 Mono", monospace';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = this.palette.foreground;
     ctx.textAlign = 'right';
     ctx.fillText(`TIME: ${timeStr}`, x, y);
 
@@ -1035,7 +1044,7 @@ export class ChartRenderer {
    * aircraft current position to the target airport. This is a standard
    * aviation navigation indication for "direct-to" navigation mode.
    *
-   * Style: Magenta (#FF00FF), 2px wide, dashed (10px dash, 5px gap)
+   * Style: Palette navigation accent, 2px wide, dashed (10px dash, 5px gap)
    *
    * @param {number} aircraftLat - Aircraft latitude in degrees
    * @param {number} aircraftLon - Aircraft longitude in degrees
@@ -1055,8 +1064,7 @@ export class ChartRenderer {
     const ctx = this.ctx;
     ctx.save();
 
-    // Magenta dashed line
-    ctx.strokeStyle = '#FF00FF';
+    ctx.strokeStyle = this.palette.direct;
     ctx.lineWidth = 2;
     ctx.setLineDash([10, 5]);
 
@@ -1108,16 +1116,16 @@ export class ChartRenderer {
     ctx.save();
 
     // Background box
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillStyle = this.palette.panel;
     ctx.fillRect(x, y, width, height);
 
     // Border
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = this.palette.border;
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, width, height);
 
     // Content
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = this.palette.foreground;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
@@ -1141,11 +1149,11 @@ export class ChartRenderer {
 
     // Active runway
     if (navData.activeRunway) {
-      ctx.fillStyle = '#0088dd';
+      ctx.fillStyle = this.palette.accent;
       ctx.fillText(`Active Runway: ${navData.activeRunway.id}`, x + 10, currentY);
       currentY += lineHeight;
 
-      ctx.fillStyle = '#000000';
+      ctx.fillStyle = this.palette.foreground;
       ctx.fillText(`Pattern: ${navData.activeRunway.trafficPattern.side.toUpperCase()}`, x + 10, currentY);
       currentY += lineHeight;
 
@@ -1155,7 +1163,7 @@ export class ChartRenderer {
 
     // Recommended entry
     if (navData.recommendedEntry) {
-      ctx.fillStyle = '#00aa00';
+      ctx.fillStyle = this.palette.selectedText;
       ctx.font = 'bold 11px "B612 Mono", monospace';
       ctx.fillText(`Entry: ${navData.recommendedEntry}`, x + 10, currentY);
     }

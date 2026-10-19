@@ -28,6 +28,7 @@ export const CONFIG = {
   MAX_ZOOM: 15.0,
   MIN_ZOOM: 0.1,
   ZOOM_SPEED: 1.1,         // Zoom multiplier per scroll
+  DEFAULT_MAP_THEME: 'paper',
 
   // Default rotation mode: 'north-up' or 'track-up'
   DEFAULT_ROTATION_MODE: 'north-up',
@@ -44,8 +45,13 @@ export const CONFIG = {
   VOR_RADIAL_LENGTH_PIXELS: 2000,
 
   // Instrument rendering
-  PITCH_SCALE_PIXELS_PER_DEG: 5,  // Pixels per degree for attitude indicator
-  PITCH_SCALE_RANGE: 30,          // degrees to show above/below horizon
+  SHOW_PITCH_INDICATOR: true,
+  PITCH_INDICATOR_X: 20,           // Pixels from left edge
+  PITCH_INDICATOR_Y: 54,           // Pixels from top edge
+  PITCH_INDICATOR_WIDTH: 180,
+  PITCH_INDICATOR_HEIGHT: 140,
+  PITCH_SCALE_PIXELS_PER_DEG: 3,   // Pixels per degree inside the indicator
+  PITCH_SCALE_RANGE: 30,           // Degrees generated above/below current pitch
 
   // Debug mode
   DEBUG_MODE: false,               // Enable/disable debug logging

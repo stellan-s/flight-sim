@@ -12,6 +12,19 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## Current work
 
+- Replaced the full-screen pitch ladder with a compact upper-left artificial
+  horizon showing live pitch, bank, a moving 5-degree ladder, and a fixed
+  aircraft reference. Its visibility, position, size, scale, and range are
+  exposed in the ASCII `DISPLAY` settings.
+- Verified level flight, combined pitch/bank motion, all four map themes, and
+  the settings toggle through Playwright; state output matched the display and
+  no browser console errors were reported.
+- Added four live map color themes (`paper`, `night`, `phosphor`, `amber`) with
+  coordinated palettes for chart surfaces, features, navigation, instruments,
+  vectors, and the energy diagram. Both the startup default and live theme are
+  configurable from the ASCII `DISPLAY` group.
+- Verified all four themes at 1280x720 through the settings keyboard flow;
+  screenshots and `render_game_to_text` matched, with no browser console errors.
 - Restyled the runtime configuration console as a literal ASCII terminal UI:
   character borders, bracketed values, dotted leaders, `>` selection cursors,
   a phosphor-dark surface, and one amber interaction accent.
@@ -48,6 +61,8 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## TODO
 
+- [x] Complete browser interaction and visual QA for the corner pitch indicator.
+- [x] Complete browser interaction and visual QA for every map theme.
 - [x] Finish browser visual QA for the ASCII configuration restyle.
 - [x] Complete browser interaction and visual QA for the configuration console.
 - [x] Add focused regression tests for runtime force multipliers and editor controls.

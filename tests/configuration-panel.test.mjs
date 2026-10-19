@@ -28,8 +28,10 @@ function makeSimulator() {
       zoom: 3,
       baseScale: 10000,
       rotationMode: 'north-up',
+      theme: 'paper',
       setZoom(value) { this.zoom = value; },
-      setRotationMode(value) { this.rotationMode = value; }
+      setRotationMode(value) { this.rotationMode = value; },
+      setTheme(value) { this.theme = value; }
     },
     vectors: { vectorMode: 'all' },
     energyDiagram: {
@@ -127,4 +129,18 @@ test('enter supports direct numeric editing', () => {
 
   assert.equal(simulator.dt, 0.02);
   assert.equal(panel.getState().editing, false);
+});
+
+test('plus cycles the live map theme from the display category', () => {
+  const simulator = makeSimulator();
+  const panel = new ConfigurationPanel(simulator);
+  panel.open();
+
+  const categories = panel.getCategories();
+  panel.categoryIndex = categories.findIndex(category => category.id === 'display');
+  panel.rowIndex = categories[panel.categoryIndex].items.findIndex(item => item.label === 'Map theme');
+  panel.handleKey({ key: '+', shiftKey: false });
+
+  assert.equal(simulator.chart.theme, 'night');
+  assert.equal(panel.getState().selectedValue, 'night');
 });

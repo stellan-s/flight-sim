@@ -24,6 +24,7 @@ export class VectorRenderer {
   // Draw a force vector from aircraft position
   drawForceVector(state, force, label, color, direction = null, scale = 0.1) {
     const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
     const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
 
     // Vector length (scale force to pixels)
@@ -59,8 +60,7 @@ export class VectorRenderer {
     const endX = pos.x + dx;
     const endY = pos.y + dy;
 
-    // For LIFT, use black arrow but colored label
-    const arrowColor = label === 'LIFT' ? '#000000' : color;
+    const arrowColor = label === 'LIFT' ? palette.foreground : color;
 
     // Draw line
     ctx.strokeStyle = arrowColor;
@@ -92,11 +92,11 @@ export class VectorRenderer {
     const labelX = endX + 10;
     const labelY = endY;
 
-    let bgColor = '#FFFFFF';
+    let bgColor = palette.panelSolid;
     let textColor = color;
 
     if (label === 'WEIGHT') {
-      textColor = '#888888';
+      textColor = palette.muted;
     }
 
     this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(force)}N`, bgColor, textColor);
@@ -130,7 +130,7 @@ export class VectorRenderer {
       pos.x + Math.cos(endAngle) * labelDistance,
       pos.y + Math.sin(endAngle) * labelDistance,
       label,
-      '#FFFFFF',
+      this.chart.palette.panelSolid,
       color
     );
   }
@@ -141,6 +141,7 @@ export class VectorRenderer {
 
     const scale = CONFIG.FORCE_VECTOR_SCALE;
     const alpha = forces.aerodynamic.alpha;
+    const palette = this.chart.palette;
 
     // Calculate force directions in body frame, then transform to earth frame
 
@@ -188,20 +189,20 @@ export class VectorRenderer {
 
       let liftColor;
       if (liftToWeightRatio > 1.05) {
-        liftColor = '#00aa00'; // Green - climbing (lift > weight)
+        liftColor = palette.selectedText;
       } else if (liftToWeightRatio < 0.95) {
-        liftColor = '#dd0000'; // Red - descending (lift < weight)
+        liftColor = palette.danger;
       } else {
-        liftColor = '#ff8800'; // Orange - equilibrium (lift ≈ weight)
+        liftColor = palette.warning;
       }
 
       // Individual forces
       this.drawForceVector(state, liftValue, 'LIFT', liftColor, liftEarth, scale);
-      this.drawForceVector(state, weightValue, 'WEIGHT', '#888888', weightEarth, scale);
-      this.drawForceVector(state, forces.components.thrust, 'THRUST', '#4488dd', thrustEarth, scale);
-      this.drawForceVector(state, forces.components.drag, 'DRAG', '#dd4444', dragEarth, scale);
+      this.drawForceVector(state, weightValue, 'WEIGHT', palette.muted, weightEarth, scale);
+      this.drawForceVector(state, forces.components.thrust, 'THRUST', palette.radial, thrustEarth, scale);
+      this.drawForceVector(state, forces.components.drag, 'DRAG', palette.danger, dragEarth, scale);
       if (Math.abs(forces.components.side) >= 1) {
-        this.drawForceVector(state, forces.components.side, 'SIDE', '#8844aa', sideEarth, scale);
+        this.drawForceVector(state, forces.components.side, 'SIDE', palette.direct, sideEarth, scale);
       }
 
       // Resultant
@@ -211,13 +212,13 @@ export class VectorRenderer {
         forces.body.Z * forces.body.Z
       );
 
-      const resultantColor = resultant < 500 ? '#44aa44' : '#dd4444';
+      const resultantColor = resultant < 500 ? palette.course : palette.danger;
       this.drawForceVector(state, resultant, 'RESULTANT', resultantColor, resultantEarth, scale);
 
       if (forces.moments) {
-        this.drawMomentArrow(state, forces.moments.L, 'L', '#8844aa', 24, Math.PI);
-        this.drawMomentArrow(state, forces.moments.M, 'M', '#008899', 31, -Math.PI / 2);
-        this.drawMomentArrow(state, forces.moments.N, 'N', '#aa6600', 38, 0);
+        this.drawMomentArrow(state, forces.moments.L, 'L', palette.direct, 24, Math.PI);
+        this.drawMomentArrow(state, forces.moments.M, 'M', palette.accent, 31, -Math.PI / 2);
+        this.drawMomentArrow(state, forces.moments.N, 'N', palette.warning, 38, 0);
       }
     }
 
@@ -232,6 +233,7 @@ export class VectorRenderer {
     if (!forces) return;
 
     const scale = CONFIG.VELOCITY_VECTOR_SCALE;
+    const palette = this.chart.palette;
 
     // 1. VELOCITY VECTOR (Airspeed) - cyan
     // Get velocity in body frame from aerodynamic data
@@ -246,7 +248,7 @@ export class VectorRenderer {
       z: V * Math.sin(alpha) * Math.cos(beta)
     };
     const velEarth = bodyToEarth(velBody, state.orientation);
-    this.drawVelocityVector(state, V, 'VELOCITY', '#00BBDD', velEarth, scale);
+    this.drawVelocityVector(state, V, 'VELOCITY', palette.accent, velEarth, scale);
 
     // 2. WIND VECTOR - light gray/blue
     const windNorth = wind ? wind.windNorth : 0;
@@ -260,7 +262,7 @@ export class VectorRenderer {
         east: windEast,
         down: windDown
       };
-      this.drawVelocityVector(state, windSpeed, 'WIND', '#8899BB', windEarth, scale);
+      this.drawVelocityVector(state, windSpeed, 'WIND', palette.wind, windEarth, scale);
     }
 
     // 3. GROUND TRACK VECTOR (Velocity + Wind) - brown/orange
@@ -271,7 +273,7 @@ export class VectorRenderer {
     );
     const groundSpeed = getHorizontalSpeed(groundEarth);
     groundEarth.down = 0;
-    this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', '#CC6600', groundEarth, scale);
+    this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', palette.warning, groundEarth, scale);
   }
 
   // Draw velocity vector (similar to force vector but for velocities)
@@ -326,18 +328,19 @@ export class VectorRenderer {
     const labelY = endY;
 
     const speedKts = Math.round(magnitude * 1.94384); // m/s to knots
-    this.chart.drawLabel(labelX, labelY, `${label}: ${speedKts}kt`, '#FFFFFF', color);
+    this.chart.drawLabel(labelX, labelY, `${label}: ${speedKts}kt`, this.chart.palette.panelSolid, color);
   }
 
   // Draw state vectors in top-right corner
   drawStateVectors(state, controls, input, forces) {
     const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
     const startX = this.chart.canvas.width - CONFIG.STATE_PANEL_X;
     const startY = CONFIG.STATE_PANEL_Y;
     const lineHeight = 18;
 
     ctx.font = '12px "B612 Mono", monospace';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.foreground;
 
     const pitch = state.orientation.pitch * 180 / Math.PI;
     const roll = state.orientation.roll * 180 / Math.PI;
@@ -381,21 +384,22 @@ export class VectorRenderer {
   // Draw vector mode indicator
   drawVectorModeIndicator() {
     const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
     const x = 20;
     const y = this.chart.canvas.height - 30;
 
     // Background
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.fillStyle = palette.panel;
     ctx.fillRect(x - 5, y - 15, 150, 25);
 
     // Border
-    ctx.strokeStyle = '#000000';
+    ctx.strokeStyle = palette.border;
     ctx.lineWidth = 1;
     ctx.strokeRect(x - 5, y - 15, 150, 25);
 
     // Text
     ctx.font = '11px "B612 Mono", monospace';
-    ctx.fillStyle = '#000000';
+    ctx.fillStyle = palette.foreground;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
 
@@ -409,7 +413,7 @@ export class VectorRenderer {
     }
 
     ctx.fillText(modeText, x, y);
-    ctx.fillStyle = '#666666';
+    ctx.fillStyle = palette.muted;
     ctx.fillText('(V to toggle)', x + 100, y);
   }
 }
