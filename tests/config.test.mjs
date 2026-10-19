@@ -5,7 +5,7 @@ import { CONFIG } from '../src/config.js';
 import { AircraftState } from '../src/core/aircraft.js';
 import { calculateTrueAirspeedForIAS } from '../src/core/forces.js';
 import { ChartRenderer } from '../src/rendering/chart.js';
-import { CHART_THEME_NAMES } from '../src/rendering/chart-themes.js';
+import { CHART_THEMES, CHART_THEME_NAMES } from '../src/rendering/chart-themes.js';
 
 test('configured initial speed produces the requested IAS at altitude', () => {
   const state = new AircraftState();
@@ -34,7 +34,12 @@ test('chart defaults and zoom limits come from configuration', () => {
   assert.equal(chart.baseScale, CONFIG.BASE_SCALE);
   assert.equal(chart.rotationMode, CONFIG.DEFAULT_ROTATION_MODE);
   assert.equal(chart.theme, CONFIG.DEFAULT_MAP_THEME);
-  assert.deepEqual(CHART_THEME_NAMES, ['paper', 'night', 'phosphor', 'amber']);
+  assert.deepEqual(CHART_THEME_NAMES, [
+    'paper', 'night', 'phosphor', 'amber', 'black-white',
+    'github-light', 'github-dark', 'nord', 'dracula',
+    'solarized-light', 'solarized-dark', 'gruvbox-dark',
+    'tokyo-night', 'catppuccin-mocha'
+  ]);
 
   chart.setZoom(CONFIG.MAX_ZOOM + 1);
   assert.equal(chart.zoom, CONFIG.MAX_ZOOM);
@@ -49,4 +54,17 @@ test('chart defaults and zoom limits come from configuration', () => {
 
   assert.equal(chart.setTheme('not-a-theme'), false);
   assert.equal(chart.theme, 'night');
+});
+
+test('every chart theme provides the complete render palette', () => {
+  const requiredKeys = Object.keys(CHART_THEMES.paper);
+
+  for (const [name, palette] of Object.entries(CHART_THEMES)) {
+    assert.deepEqual(Object.keys(palette), requiredKeys, `${name} palette keys`);
+    assert.notEqual(palette.background, palette.foreground, `${name} foreground contrast`);
+    assert.ok(Object.values(palette).every(value => typeof value === 'string' && value.length > 0));
+  }
+
+  assert.equal(CHART_THEMES['black-white'].background, '#FFFFFF');
+  assert.equal(CHART_THEMES['black-white'].foreground, '#000000');
 });

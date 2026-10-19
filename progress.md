@@ -12,19 +12,32 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## Current work
 
-- Replaced the full-screen pitch ladder with a compact upper-left artificial
-  horizon showing live pitch, bank, a moving 5-degree ladder, and a fixed
-  aircraft reference. Its visibility, position, size, scale, and range are
-  exposed in the ASCII `DISPLAY` settings.
+- Expanded the live chart palette from four to fourteen themes: `black-white`,
+  GitHub light/dark, Nord, Dracula, Solarized light/dark, Gruvbox Dark, Tokyo
+  Night, and Catppuccin Mocha join the existing themes. Each palette covers the
+  complete map, navigation, vector, instrument, and energy color system.
+- Cycled through all fourteen themes using the real keyboard settings flow,
+  captured and inspected each 1280x720 canvas, matched every reported theme to
+  the visible palette, and found no browser console errors.
+- Confirmed the W/S throttle input drives the modeled thrust output and added a
+  theme-aware vertical throttle tape beside the screen-center aircraft. Its
+  visibility, center offsets, width, and height are exposed in ASCII settings.
+- Browser verification moved throttle from 40.3% to 76.5% with W and raised
+  thrust from 950 N to 1,804 N; S reduced both again. The final tape placement
+  cleared the force labels and produced no browser console errors.
+- Restored the original viewport-wide pitch horizon in place of the compact
+  corner instrument. It follows pitch and bank, retains the fixed level
+  reference and edge scales, and now uses the active map theme.
+- Browser checks verified viewport-line rotation through a 37-degree bank and
+  translation to -34 degrees pitch. Drawing it beneath HUD text keeps status
+  labels readable; the throttle tape remains unobstructed and no console errors
+  were reported.
 - Verified level flight, combined pitch/bank motion, all four map themes, and
   the settings toggle through Playwright; state output matched the display and
   no browser console errors were reported.
-- Added four live map color themes (`paper`, `night`, `phosphor`, `amber`) with
-  coordinated palettes for chart surfaces, features, navigation, instruments,
-  vectors, and the energy diagram. Both the startup default and live theme are
-  configurable from the ASCII `DISPLAY` group.
-- Verified all four themes at 1280x720 through the settings keyboard flow;
-  screenshots and `render_game_to_text` matched, with no browser console errors.
+- Added a live map theme system with coordinated palettes for chart surfaces,
+  features, navigation, instruments, vectors, and the energy diagram. Both the
+  startup default and live theme are configurable from ASCII `DISPLAY` settings.
 - Restyled the runtime configuration console as a literal ASCII terminal UI:
   character borders, bracketed values, dotted leaders, `>` selection cursors,
   a phosphor-dark surface, and one amber interaction accent.
@@ -61,6 +74,9 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## TODO
 
+- [x] Complete settings interaction and visual QA for all fourteen map themes.
+- [x] Complete browser motion and visual QA for the restored viewport pitch line.
+- [x] Complete browser input and visual QA for the center throttle indicator.
 - [x] Complete browser interaction and visual QA for the corner pitch indicator.
 - [x] Complete browser interaction and visual QA for every map theme.
 - [x] Finish browser visual QA for the ASCII configuration restyle.

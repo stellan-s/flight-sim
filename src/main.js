@@ -433,7 +433,8 @@ class FlightSimulator {
         helpScrollOffset: round(this.helpScrollOffset, 1),
         mapRotation: this.chart.rotationMode,
         mapTheme: this.chart.theme,
-        pitchIndicatorVisible: CONFIG.SHOW_PITCH_INDICATOR,
+        pitchLineVisible: CONFIG.SHOW_PITCH_INDICATOR,
+        throttleIndicatorVisible: CONFIG.SHOW_THROTTLE_INDICATOR,
         vectorMode: this.vectors.vectorMode,
         zoom: round(this.chart.zoom, 1)
       },
@@ -588,10 +589,10 @@ class FlightSimulator {
       this.chart.drawAirportNavInfo(airportNavData);
     }
 
-    this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
-
-    // Draw the compact pitch/bank indicator in its configured screen corner.
+    // Draw the roll-rotated pitch horizon beneath HUD text and vector labels.
     this.instruments.drawAttitudeIndicator(this.state);
+
+    this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
 
     // Draw force vectors
     if (this.lastForces) {
@@ -600,6 +601,9 @@ class FlightSimulator {
 
     // Draw state vectors (top-right)
     this.vectors.drawStateVectors(this.state, this.controls, this.input, this.lastForces);
+
+    // Keep commanded engine power visible beside the screen-center aircraft.
+    this.instruments.drawThrottleIndicator(this.controls.throttle);
 
     // Draw vector mode indicator (bottom-left)
     this.vectors.drawVectorModeIndicator();

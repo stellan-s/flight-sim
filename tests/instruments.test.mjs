@@ -3,24 +3,21 @@ import assert from 'node:assert/strict';
 
 import { CONFIG } from '../src/config.js';
 import { getChartTheme } from '../src/rendering/chart-themes.js';
-import { InstrumentRenderer, getPitchLadderMarks } from '../src/rendering/instruments.js';
+import { InstrumentRenderer } from '../src/rendering/instruments.js';
 
-test('pitch ladder marks follow the current pitch in five-degree increments', () => {
-  const marks = getPitchLadderMarks(12, 20);
-
-  assert.deepEqual(marks, [-5, 0, 5, 10, 15, 20, 25, 30]);
-  assert.ok(marks.every((mark, index) => index === 0 || mark - marks[index - 1] === 5));
-});
-
-test('pitch indicator can be shown and hidden from configuration', () => {
+test('viewport pitch line follows pitch and roll and can be hidden', () => {
   const operations = [];
   const ctx = {
-    save() {}, restore() {}, beginPath() {}, clip() {}, stroke() {}, fill() {},
+    save() {}, restore() {}, beginPath() {}, stroke() {}, fill() {},
     fillRect(...args) { operations.push(['fillRect', ...args]); },
     strokeRect(...args) { operations.push(['strokeRect', ...args]); },
-    moveTo() {}, lineTo() {}, rect() {}, translate() {},
+    moveTo(...args) { operations.push(['moveTo', ...args]); },
+    lineTo(...args) { operations.push(['lineTo', ...args]); },
+    translate(...args) { operations.push(['translate', ...args]); },
     rotate(value) { operations.push(['rotate', value]); },
-    fillText() {}, arc() {}
+    fillText(...args) { operations.push(['fillText', ...args]); },
+    measureText(text) { return { width: text.length * 7 }; },
+    setLineDash(...args) { operations.push(['setLineDash', ...args]); }
   };
   const renderer = new InstrumentRenderer({
     ctx,
@@ -38,6 +35,8 @@ test('pitch indicator can be shown and hidden from configuration', () => {
     renderer.drawAttitudeIndicator(state);
     assert.ok(operations.some(([name]) => name === 'fillRect'));
     assert.ok(operations.some(([name, value]) => name === 'rotate' && Math.abs(value + 5 * Math.PI / 180) < 1e-9));
+    assert.ok(operations.some(([name, x, y]) => name === 'moveTo' && x < -1000 && y === 50));
+    assert.ok(operations.some(([name, text]) => name === 'fillText' && text === '+10.0°'));
 
     const operationCount = operations.length;
     CONFIG.SHOW_PITCH_INDICATOR = false;
@@ -45,5 +44,42 @@ test('pitch indicator can be shown and hidden from configuration', () => {
     assert.equal(operations.length, operationCount);
   } finally {
     CONFIG.SHOW_PITCH_INDICATOR = originalVisibility;
+  }
+});
+
+test('throttle indicator renders a proportional center-adjacent bar', () => {
+  const operations = [];
+  const ctx = {
+    save() {}, restore() {}, beginPath() {}, stroke() {}, fill() {},
+    fillRect(...args) { operations.push(['fillRect', ...args]); },
+    strokeRect(...args) { operations.push(['strokeRect', ...args]); },
+    moveTo(...args) { operations.push(['moveTo', ...args]); },
+    lineTo() {},
+    fillText(...args) { operations.push(['fillText', ...args]); }
+  };
+  const renderer = new InstrumentRenderer({
+    ctx,
+    canvas: { width: 1280, height: 720 },
+    palette: getChartTheme('phosphor')
+  });
+  const originalVisibility = CONFIG.SHOW_THROTTLE_INDICATOR;
+
+  try {
+    CONFIG.SHOW_THROTTLE_INDICATOR = true;
+    renderer.drawThrottleIndicator(0.5);
+
+    const fill = operations.find(([name, x, y, width, height]) =>
+      name === 'fillRect' && width === CONFIG.THROTTLE_INDICATOR_WIDTH - 4 && height === 56
+    );
+    assert.ok(fill, 'expected a half-height throttle fill');
+    assert.ok(operations.some(([name, text]) => name === 'fillText' && text === '50%'));
+    assert.equal(fill[1], 1280 / 2 + CONFIG.THROTTLE_INDICATOR_OFFSET_X + 2);
+
+    const operationCount = operations.length;
+    CONFIG.SHOW_THROTTLE_INDICATOR = false;
+    renderer.drawThrottleIndicator(1);
+    assert.equal(operations.length, operationCount);
+  } finally {
+    CONFIG.SHOW_THROTTLE_INDICATOR = originalVisibility;
   }
 });

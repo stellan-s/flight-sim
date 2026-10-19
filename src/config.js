@@ -46,12 +46,13 @@ export const CONFIG = {
 
   // Instrument rendering
   SHOW_PITCH_INDICATOR: true,
-  PITCH_INDICATOR_X: 20,           // Pixels from left edge
-  PITCH_INDICATOR_Y: 54,           // Pixels from top edge
-  PITCH_INDICATOR_WIDTH: 180,
-  PITCH_INDICATOR_HEIGHT: 140,
-  PITCH_SCALE_PIXELS_PER_DEG: 3,   // Pixels per degree inside the indicator
-  PITCH_SCALE_RANGE: 30,           // Degrees generated above/below current pitch
+  PITCH_SCALE_PIXELS_PER_DEG: 5,   // Pixels per degree for the viewport horizon
+  PITCH_SCALE_RANGE: 30,           // Degrees shown on the viewport edge scales
+  SHOW_THROTTLE_INDICATOR: true,
+  THROTTLE_INDICATOR_OFFSET_X: 96, // Pixels right of screen center
+  THROTTLE_INDICATOR_OFFSET_Y: 0,  // Pixels below screen center
+  THROTTLE_INDICATOR_WIDTH: 14,
+  THROTTLE_INDICATOR_HEIGHT: 116,
 
   // Debug mode
   DEBUG_MODE: false,               // Enable/disable debug logging

@@ -102,3 +102,21 @@ test('runtime force and moment gains scale their modeled outputs', () => {
   assert.ok(Math.abs(tunedForces.components.thrust / baselineForces.components.thrust - 2) < 1e-12);
   assert.ok(Math.abs(tunedMoments.L / baselineMoments.L - 1.75) < 1e-12);
 });
+
+test('throttle command produces proportional thrust from idle to full power', () => {
+  const state = new AircraftState();
+  state.velocity = { u: 55, v: 0, w: 0 };
+  const specs = new AircraftSpecs();
+  const controls = new Controls();
+
+  controls.throttle = 0;
+  const idle = calculateAerodynamicForces(state, specs, controls).components.thrust;
+  controls.throttle = 0.5;
+  const half = calculateAerodynamicForces(state, specs, controls).components.thrust;
+  controls.throttle = 1;
+  const full = calculateAerodynamicForces(state, specs, controls).components.thrust;
+
+  assert.equal(idle, 0);
+  assert.ok(full > 0);
+  assert.ok(Math.abs(half / full - 0.5) < 1e-12);
+});

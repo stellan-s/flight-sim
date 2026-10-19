@@ -1,24 +1,16 @@
-// Compact flight instruments.
+// Flight instruments drawn directly into the chart viewport.
 
 import { CONFIG } from '../config.js';
 
 const RAD_TO_DEG = 180 / Math.PI;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-export function getPitchLadderMarks(pitchDeg, range = CONFIG.PITCH_SCALE_RANGE) {
-  const start = Math.ceil((pitchDeg - range) / 5) * 5;
-  const end = Math.floor((pitchDeg + range) / 5) * 5;
-  const marks = [];
-  for (let degrees = start; degrees <= end; degrees += 5) marks.push(degrees);
-  return marks;
-}
-
 export class InstrumentRenderer {
   constructor(chartRenderer) {
     this.chart = chartRenderer;
   }
 
-  // Draw a compact moving pitch ladder with fixed aircraft references.
+  // Draw the original viewport-wide pitch horizon and fixed level reference.
   drawAttitudeIndicator(state) {
     if (!CONFIG.SHOW_PITCH_INDICATOR) return;
 
@@ -27,118 +19,167 @@ export class InstrumentRenderer {
     const canvas = this.chart.canvas;
     const pitch = state.orientation.pitch * RAD_TO_DEG;
     const roll = state.orientation.roll;
-    const rollDeg = roll * RAD_TO_DEG;
     const alpha = state.getAlpha() * RAD_TO_DEG;
-
-    const width = Math.min(
-      Math.max(140, CONFIG.PITCH_INDICATOR_WIDTH),
-      Math.max(96, canvas.width - 16)
-    );
-    const height = Math.min(
-      Math.max(110, CONFIG.PITCH_INDICATOR_HEIGHT),
-      Math.max(90, canvas.height - 16)
-    );
-    const x = clamp(CONFIG.PITCH_INDICATOR_X, 8, Math.max(8, canvas.width - width - 8));
-    const y = clamp(CONFIG.PITCH_INDICATOR_Y, 8, Math.max(8, canvas.height - height - 8));
-    const headerHeight = 24;
-    const footerHeight = 20;
-    const inner = {
-      left: x + 8,
-      right: x + width - 8,
-      top: y + headerHeight,
-      bottom: y + height - footerHeight
-    };
-    const centerX = (inner.left + inner.right) / 2;
-    const centerY = (inner.top + inner.bottom) / 2;
-    const innerWidth = inner.right - inner.left;
-
-    const borderColor = alpha > 15
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const pitchOffset = pitch * CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
+    const lineLength = Math.max(canvas.width, canvas.height) * 1.5;
+    const horizonColor = alpha > 15
       ? palette.danger
-      : alpha > 13 ? palette.warning : palette.border;
+      : alpha > 13 ? palette.warning : palette.foreground;
 
     ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(-roll);
+    ctx.globalAlpha = 0.72;
+    ctx.strokeStyle = horizonColor;
+    ctx.lineWidth = 2;
+
+    ctx.beginPath();
+    ctx.moveTo(-lineLength, pitchOffset);
+    ctx.lineTo(lineLength, pitchOffset);
+    ctx.stroke();
+
+    ctx.lineWidth = 1;
+    const tickSpacing = 100;
+    const tickCount = Math.floor(lineLength / tickSpacing);
+    for (let index = -tickCount; index <= tickCount; index++) {
+      if (index === 0) continue;
+      const tickX = index * tickSpacing;
+      ctx.beginPath();
+      ctx.moveTo(tickX, pitchOffset - 5);
+      ctx.lineTo(tickX, pitchOffset + 5);
+      ctx.stroke();
+    }
+
+    // This fixed line makes the moving horizon's pitch displacement explicit.
+    ctx.strokeStyle = palette.muted;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-lineLength, 0);
+    ctx.lineTo(lineLength, 0);
+    ctx.stroke();
+
+    ctx.globalAlpha = 1;
+    ctx.font = 'bold 11px "B612 Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    const pitchText = `${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`;
+    const labelX = -canvas.width / 2 + 40;
+    const labelWidth = ctx.measureText(pitchText).width;
+    ctx.fillStyle = palette.panelSolid;
+    ctx.fillRect(labelX - 3, -7, labelWidth + 6, 14);
+    ctx.strokeStyle = horizonColor;
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(labelX - 3, -7, labelWidth + 6, 14);
+    ctx.fillStyle = palette.foreground;
+    ctx.fillText(pitchText, labelX, 0);
+    ctx.restore();
+
+    // Keep the pitch scale upright at both edges while the horizon rolls.
+    ctx.save();
+    ctx.strokeStyle = palette.muted;
+    ctx.fillStyle = palette.foreground;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.82;
+    ctx.font = 'bold 10px "B612 Mono", monospace';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    const leftX = 20;
+    const rightX = canvas.width - 20;
+    for (let degrees = -CONFIG.PITCH_SCALE_RANGE; degrees <= CONFIG.PITCH_SCALE_RANGE; degrees += 10) {
+      const markY = centerY - degrees * CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
+      if (markY < 10 || markY > canvas.height - 10) continue;
+      const label = degrees > 0 ? `+${degrees}°` : `${degrees}°`;
+
+      ctx.beginPath();
+      ctx.moveTo(leftX, markY);
+      ctx.lineTo(leftX + 10, markY);
+      ctx.stroke();
+      ctx.fillText(label, leftX - 2, markY);
+
+      ctx.textAlign = 'left';
+      ctx.beginPath();
+      ctx.moveTo(rightX - 10, markY);
+      ctx.lineTo(rightX, markY);
+      ctx.stroke();
+      ctx.fillText(label, rightX + 2, markY);
+      ctx.textAlign = 'right';
+    }
+
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(leftX + 15, centerY);
+    ctx.lineTo(leftX + 50, centerY);
+    ctx.moveTo(rightX - 50, centerY);
+    ctx.lineTo(rightX - 15, centerY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Draw commanded engine power as a compact center-adjacent vertical tape.
+  drawThrottleIndicator(throttle) {
+    if (!CONFIG.SHOW_THROTTLE_INDICATOR) return;
+
+    const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
+    const canvas = this.chart.canvas;
+    const command = clamp(throttle, 0, 1);
+    const width = clamp(CONFIG.THROTTLE_INDICATOR_WIDTH, 8, 28);
+    const height = clamp(
+      CONFIG.THROTTLE_INDICATOR_HEIGHT,
+      60,
+      Math.max(60, canvas.height - 88)
+    );
+    const x = clamp(
+      canvas.width / 2 + CONFIG.THROTTLE_INDICATOR_OFFSET_X,
+      8,
+      Math.max(8, canvas.width - width - 32)
+    );
+    const y = clamp(
+      canvas.height / 2 + CONFIG.THROTTLE_INDICATOR_OFFSET_Y - height / 2,
+      30,
+      Math.max(30, canvas.height - height - 30)
+    );
+    const innerHeight = height - 4;
+    const fillHeight = innerHeight * command;
+    const commandY = y + 2 + innerHeight - fillHeight;
+
+    ctx.save();
+    ctx.font = 'bold 9px "B612 Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = palette.foreground;
+    ctx.fillText('THR', x + width / 2, y - 11);
+
     ctx.fillStyle = palette.panel;
     ctx.fillRect(x, y, width, height);
-    ctx.strokeStyle = borderColor;
+    ctx.fillStyle = palette.accent;
+    ctx.fillRect(x + 2, commandY, width - 4, fillHeight);
+    ctx.strokeStyle = palette.foreground;
     ctx.lineWidth = 1;
     ctx.strokeRect(x + 0.5, y + 0.5, width - 1, height - 1);
 
-    ctx.beginPath();
-    ctx.moveTo(x, y + headerHeight);
-    ctx.lineTo(x + width, y + headerHeight);
-    ctx.moveTo(x, y + height - footerHeight);
-    ctx.lineTo(x + width, y + height - footerHeight);
-    ctx.strokeStyle = palette.gridLabel;
-    ctx.stroke();
-
-    ctx.font = 'bold 10px "B612 Mono", monospace';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = palette.muted;
-    ctx.textAlign = 'left';
-    ctx.fillText('PITCH', x + 8, y + headerHeight / 2);
-    ctx.fillStyle = palette.foreground;
-    ctx.textAlign = 'right';
-    ctx.fillText(`${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`, x + width - 8, y + headerHeight / 2);
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(inner.left, inner.top, innerWidth, inner.bottom - inner.top);
-    ctx.clip();
-    ctx.translate(centerX, centerY);
-    ctx.rotate(-roll);
-    ctx.font = '8px "B612 Mono", monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const scale = CONFIG.PITCH_SCALE_PIXELS_PER_DEG;
-    const centerGap = 18;
-    for (const mark of getPitchLadderMarks(pitch)) {
-      const markY = (pitch - mark) * scale;
-      const isHorizon = mark === 0;
-      const major = Math.abs(mark) % 10 === 0;
-      const halfLength = isHorizon ? innerWidth * 0.43 : major ? 38 : 25;
-
-      ctx.strokeStyle = isHorizon ? palette.foreground : major ? palette.foreground : palette.muted;
-      ctx.lineWidth = isHorizon ? 1.5 : 1;
+    ctx.strokeStyle = palette.muted;
+    for (const fraction of [0, 0.25, 0.5, 0.75, 1]) {
+      const tickY = y + height - fraction * height;
       ctx.beginPath();
-      ctx.moveTo(-halfLength, markY);
-      ctx.lineTo(-centerGap / 2, markY);
-      ctx.moveTo(centerGap / 2, markY);
-      ctx.lineTo(halfLength, markY);
+      ctx.moveTo(x - (fraction === 0 || fraction === 0.5 || fraction === 1 ? 5 : 3), tickY);
+      ctx.lineTo(x, tickY);
       ctx.stroke();
-
-      if (major && !isHorizon) {
-        ctx.fillStyle = palette.foreground;
-        ctx.fillText(String(Math.abs(mark)), -halfLength - 11, markY);
-        ctx.fillText(String(Math.abs(mark)), halfLength + 11, markY);
-      }
     }
-    ctx.restore();
 
-    // Fixed aircraft reference: the ladder moves, these wings do not.
-    ctx.strokeStyle = palette.accent;
+    // A small pointer makes the exact command readable even at low fill levels.
     ctx.fillStyle = palette.accent;
-    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(centerX - 38, centerY);
-    ctx.lineTo(centerX - 11, centerY);
-    ctx.lineTo(centerX - 5, centerY + 5);
-    ctx.moveTo(centerX + 38, centerY);
-    ctx.lineTo(centerX + 11, centerY);
-    ctx.lineTo(centerX + 5, centerY + 5);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, 2.5, 0, Math.PI * 2);
+    ctx.moveTo(x + width + 2, commandY);
+    ctx.lineTo(x + width + 7, commandY - 4);
+    ctx.lineTo(x + width + 7, commandY + 4);
     ctx.fill();
 
-    ctx.font = '9px "B612 Mono", monospace';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = palette.muted;
-    ctx.textAlign = 'left';
-    ctx.fillText('BANK', x + 8, y + height - footerHeight / 2);
     ctx.fillStyle = palette.foreground;
-    ctx.textAlign = 'right';
-    ctx.fillText(`${rollDeg >= 0 ? '+' : ''}${rollDeg.toFixed(1)}°`, x + width - 8, y + height - footerHeight / 2);
+    ctx.fillText(`${Math.round(command * 100)}%`, x + width / 2, y + height + 11);
     ctx.restore();
   }
 }
