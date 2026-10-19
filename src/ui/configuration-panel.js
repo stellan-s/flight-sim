@@ -722,7 +722,7 @@ export class ConfigurationPanel {
         maximumFractionDigits: item.precision ?? 2,
         useGrouping: false
       })
-      : '—';
+      : 'N/A';
     return item.unit ? `${formatted} ${item.unit}` : formatted;
   }
 
@@ -748,167 +748,149 @@ export class ConfigurationPanel {
 
     const width = canvas.width;
     const height = canvas.height;
-    const sidebarWidth = Math.max(220, Math.min(286, width * 0.23));
-    const headerHeight = 92;
-    const footerHeight = 66;
-    const contentX = sidebarWidth + 38;
-    const contentWidth = width - contentX - 34;
-    const rowHeight = 30;
-    const listTop = 204;
-    const listBottom = height - footerHeight - 18;
-    const visibleRows = Math.max(3, Math.floor((listBottom - listTop) / rowHeight));
+    const fontSize = width < 760 ? 10 : 12;
+    const lineHeight = width < 760 ? 18 : 22;
+    const fontFamily = '"Courier New", Courier, monospace';
+
+    ctx.save();
+    ctx.font = `400 ${fontSize}px ${fontFamily}`;
+    const charWidth = ctx.measureText('M').width;
+    const totalColumns = Math.max(44, Math.floor((width - 32) / charWidth));
+    const groupColumns = clamp(Math.floor(totalColumns * 0.25), 21, 32);
+    const contentColumns = totalColumns - groupColumns - 3;
+    const totalRows = Math.max(18, Math.floor((height - 18) / lineHeight));
+    const listStartRow = 6;
+    const footerSeparatorRow = totalRows - 4;
+    const visibleRows = Math.max(3, footerSeparatorRow - listStartRow);
+    const left = Math.round((width - totalColumns * charWidth) / 2);
+    const top = Math.round((height - totalRows * lineHeight) / 2);
+
+    const colors = {
+      background: '#07100D',
+      text: '#AEBBAD',
+      bright: '#E4E9DF',
+      dim: '#526157',
+      faint: '#26342C',
+      accent: '#FFB347'
+    };
+
+    const ascii = value => String(value)
+      .replace(/[—–]/g, '-')
+      .replace(/±/g, '+/-')
+      .replace(/×/g, 'x')
+      .replace(/[↑↓]/g, match => match === '↑' ? 'UP' : 'DN')
+      .replace(/[←→]/g, match => match === '←' ? 'LT' : 'RT')
+      .replace(/[^ -~]/g, '?');
+    const fit = (value, columns) => {
+      const text = ascii(value);
+      if (text.length <= columns) return text;
+      return columns <= 3 ? text.slice(0, columns) : `${text.slice(0, columns - 3)}...`;
+    };
+    const pad = (value, columns) => fit(value, columns).padEnd(columns, ' ');
+    const drawAt = (row, column, value, color = colors.text, bold = false, alpha = 1) => {
+      ctx.globalAlpha = alpha;
+      ctx.font = `${bold ? 700 : 400} ${fontSize}px ${fontFamily}`;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(fit(value, totalColumns - column), left + column * charWidth, top + (row + 0.78) * lineHeight);
+    };
+    const fullBorder = (label = '') => {
+      const prefix = label ? `+-- ${ascii(label)} ` : '+';
+      return `${prefix}${'-'.repeat(Math.max(0, totalColumns - prefix.length - 1))}+`;
+    };
+    const splitBorder = () => `+${'-'.repeat(groupColumns)}+${'-'.repeat(contentColumns)}+`;
+    const splitRow = (groupText = '', contentText = '') =>
+      `|${pad(groupText, groupColumns)}|${pad(contentText, contentColumns)}|`;
+    const terminalRow = (value = '') => `|${pad(value, totalColumns - 2)}|`;
 
     if (this.rowIndex < this.rowScroll) this.rowScroll = this.rowIndex;
     if (this.rowIndex >= this.rowScroll + visibleRows) this.rowScroll = this.rowIndex - visibleRows + 1;
     this.rowScroll = clamp(this.rowScroll, 0, Math.max(0, category.items.length - visibleRows));
 
-    const visibleCategories = Math.max(4, Math.floor((height - headerHeight - footerHeight - 30) / 27));
+    const visibleCategories = visibleRows;
     if (this.categoryIndex < this.categoryScroll) this.categoryScroll = this.categoryIndex;
     if (this.categoryIndex >= this.categoryScroll + visibleCategories) {
       this.categoryScroll = this.categoryIndex - visibleCategories + 1;
     }
 
-    ctx.save();
     const entrance = clamp((performance.now() - this.openedAt) / 150, 0, 1);
     ctx.globalAlpha = entrance;
-    ctx.fillStyle = '#F2F0E8';
+    ctx.fillStyle = colors.background;
     ctx.fillRect(0, 0, width, height);
 
-    // Subtle engineering-paper grid.
-    ctx.strokeStyle = 'rgba(20, 25, 28, 0.055)';
-    ctx.lineWidth = 1;
-    for (let x = sidebarWidth; x < width; x += 24) {
-      ctx.beginPath(); ctx.moveTo(x, headerHeight); ctx.lineTo(x, height - footerHeight); ctx.stroke();
+    // Terminal frame and fixed chrome are rendered as literal ASCII characters.
+    drawAt(0, 0, fullBorder('C172 SYSTEMS LAB / FLIGHT MODEL CONFIGURATION'), colors.accent, true, entrance);
+    drawAt(1, 0, terminalRow(
+      `CONFIG BUS: ONLINE  |  EDIT: LIVE  |  SIM: PAUSED  |  GROUP ${String(this.categoryIndex + 1).padStart(2, '0')}/${String(categories.length).padStart(2, '0')}`
+    ), colors.bright, false, entrance);
+    drawAt(2, 0, splitBorder(), colors.dim, false, entrance);
+    drawAt(3, 0, splitRow('PARAMETER GROUPS', `${category.label}  [ROW ${this.rowIndex + 1}/${category.items.length}]`), colors.bright, true, entrance);
+    drawAt(4, 0, splitRow(
+      `SHOWING ${this.categoryScroll + 1}-${Math.min(categories.length, this.categoryScroll + visibleCategories)}`,
+      category.description
+    ), colors.dim, false, entrance);
+    drawAt(5, 0, splitBorder(), colors.dim, false, entrance);
+
+    for (let visibleIndex = 0; visibleIndex < visibleRows; visibleIndex++) {
+      drawAt(listStartRow + visibleIndex, 0, splitRow('', ''), colors.faint, false, entrance);
     }
-    for (let y = headerHeight; y < height - footerHeight; y += 24) {
-      ctx.beginPath(); ctx.moveTo(sidebarWidth, y); ctx.lineTo(width, y); ctx.stroke();
-    }
 
-    // Header.
-    ctx.fillStyle = '#111619';
-    ctx.fillRect(0, 0, width, headerHeight);
-    ctx.fillStyle = '#F2F0E8';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    ctx.font = '700 11px "B612 Mono", "Courier New", monospace';
-    ctx.fillText('C172 / SYSTEMS LAB', 28, 27);
-    ctx.font = `700 ${width < 760 ? 22 : 30}px "B612 Mono", "Courier New", monospace`;
-    ctx.fillText('FLIGHT MODEL CONFIGURATION', 28, 66);
-    ctx.fillStyle = '#F0A128';
-    ctx.fillRect(width - 125, 22, 8, 8);
-    ctx.font = '700 11px "B612 Mono", "Courier New", monospace';
-    ctx.fillText('LIVE / PAUSED', width - 108, 31);
-
-    // Category rail.
-    ctx.fillStyle = '#171D20';
-    ctx.fillRect(0, headerHeight, sidebarWidth, height - headerHeight - footerHeight);
-    ctx.font = '700 10px "B612 Mono", "Courier New", monospace';
-    ctx.fillStyle = '#7D898E';
-    ctx.fillText('PARAMETER GROUPS', 28, headerHeight + 28);
-
-    const categoryTop = headerHeight + 48;
     categories.slice(this.categoryScroll, this.categoryScroll + visibleCategories).forEach((entry, visibleIndex) => {
       const actualIndex = this.categoryScroll + visibleIndex;
-      const y = categoryTop + visibleIndex * 27;
       const selected = actualIndex === this.categoryIndex;
-      if (selected) {
-        ctx.fillStyle = '#F2F0E8';
-        ctx.fillRect(18, y - 16, sidebarWidth - 18, 25);
-        ctx.fillStyle = '#F0A128';
-        ctx.fillRect(18, y - 16, 4, 25);
-      }
-      ctx.font = `${selected ? 700 : 400} 12px "B612 Mono", "Courier New", monospace`;
-      ctx.fillStyle = selected ? '#111619' : '#B8C0C2';
-      ctx.fillText(`${String(actualIndex + 1).padStart(2, '0')}  ${entry.label}`, 30, y + 1);
+      const label = `${selected ? '>' : ' '}[${String(actualIndex + 1).padStart(2, '0')}] ${entry.label}`;
+      drawAt(listStartRow + visibleIndex, 1, pad(label, groupColumns),
+        selected ? colors.accent : colors.text, selected, entrance);
     });
 
-    // Category title and context.
-    ctx.fillStyle = '#111619';
-    ctx.font = '700 11px "B612 Mono", "Courier New", monospace';
-    ctx.fillText(`${String(this.categoryIndex + 1).padStart(2, '0')} / ${String(categories.length).padStart(2, '0')}`, contentX, 121);
-    ctx.font = `700 ${width < 760 ? 19 : 24}px "B612 Mono", "Courier New", monospace`;
-    ctx.fillText(category.label, contentX, 151);
-    ctx.font = '400 11px "B612 Mono", "Courier New", monospace';
-    ctx.fillStyle = '#5A6468';
-    const description = category.description.length > 82
-      ? `${category.description.slice(0, 79)}...`
-      : category.description;
-    ctx.fillText(description, contentX, 171);
-
-    // Column labels.
-    const valueX = width - 42;
-    ctx.font = '700 9px "B612 Mono", "Courier New", monospace';
-    ctx.fillStyle = '#7A8386';
-    ctx.fillText('PARAMETER', contentX + 12, listTop - 10);
-    ctx.textAlign = 'right';
-    ctx.fillText('VALUE', valueX, listTop - 10);
-    ctx.textAlign = 'left';
-
-    const targetRowY = listTop + (this.rowIndex - this.rowScroll) * rowHeight;
+    const targetRowY = top + (listStartRow + this.rowIndex - this.rowScroll + 0.78) * lineHeight;
     if (this.displayRowY === null) this.displayRowY = targetRowY;
     this.displayRowY += (targetRowY - this.displayRowY) * 0.42;
 
     category.items.slice(this.rowScroll, this.rowScroll + visibleRows).forEach((entry, visibleIndex) => {
       const actualIndex = this.rowScroll + visibleIndex;
-      const y = listTop + visibleIndex * rowHeight;
+      const terminalRowIndex = listStartRow + visibleIndex;
 
       if (entry.type === 'heading') {
-        ctx.strokeStyle = '#BCC0BC';
-        ctx.beginPath(); ctx.moveTo(contentX, y + 14); ctx.lineTo(width - 34, y + 14); ctx.stroke();
-        ctx.fillStyle = '#F2F0E8';
-        ctx.fillRect(contentX + 8, y + 4, Math.min(235, entry.label.length * 8 + 18), 19);
-        ctx.fillStyle = '#737B7D';
-        ctx.font = '700 9px "B612 Mono", "Courier New", monospace';
-        ctx.fillText(entry.label, contentX + 15, y + 17);
+        const headingLabel = `--[ ${ascii(entry.label)} ]`;
+        const rule = `${headingLabel}${'-'.repeat(Math.max(0, contentColumns - headingLabel.length - 1))}`;
+        drawAt(terminalRowIndex, groupColumns + 2, rule, colors.dim, true, entrance);
         return;
       }
 
       const selected = actualIndex === this.rowIndex;
-      if (selected) {
-        ctx.fillStyle = '#111619';
-        ctx.fillRect(contentX, this.displayRowY, contentWidth, rowHeight - 2);
-        ctx.fillStyle = '#F0A128';
-        ctx.fillRect(contentX, this.displayRowY, 5, rowHeight - 2);
-      }
-
-      ctx.font = `${selected ? 700 : 400} 12px "B612 Mono", "Courier New", monospace`;
-      ctx.fillStyle = selected ? '#F4F1E8' : entry.type === 'readonly' ? '#7A8386' : '#20272A';
-      ctx.fillText(entry.label, contentX + 14, y + 19);
-      ctx.textAlign = 'right';
-      ctx.fillStyle = selected ? (entry.type === 'readonly' ? '#AFB8BA' : '#F0A128') : '#20272A';
-      const value = selected && this.editing ? `${this.editing.buffer}_` : this.formatValue(entry);
-      ctx.fillText(value, valueX, y + 19);
-      ctx.textAlign = 'left';
+      const value = ascii(selected && this.editing ? `${this.editing.buffer}_` : this.formatValue(entry));
+      const valueToken = entry.type === 'action' ? value : `[${value}]`;
+      const label = ascii(entry.label);
+      const availableDots = Math.max(1, contentColumns - label.length - valueToken.length - 6);
+      const line = `  ${label} ${'.'.repeat(availableDots)} ${valueToken}`;
+      const color = selected
+        ? colors.accent
+        : entry.type === 'readonly' ? colors.dim : colors.text;
+      const pulse = selected && this.statusUntil > performance.now()
+        ? 0.82 + Math.sin(performance.now() / 80) * 0.18
+        : 1;
+      drawAt(terminalRowIndex, groupColumns + 2, pad(line, contentColumns), color, selected, entrance * pulse);
     });
 
-    // Scroll rail.
-    if (category.items.length > visibleRows) {
-      const railX = width - 23;
-      const railHeight = visibleRows * rowHeight - 8;
-      const thumbHeight = Math.max(28, railHeight * visibleRows / category.items.length);
-      const thumbY = listTop + (railHeight - thumbHeight) * this.rowScroll /
-        Math.max(1, category.items.length - visibleRows);
-      ctx.fillStyle = '#D0CEC6';
-      ctx.fillRect(railX, listTop, 3, railHeight);
-      ctx.fillStyle = '#111619';
-      ctx.fillRect(railX, thumbY, 3, thumbHeight);
-    }
+    // The selection cursor keeps its short easing motion while remaining a literal ASCII glyph.
+    ctx.globalAlpha = entrance;
+    ctx.font = `700 ${fontSize}px ${fontFamily}`;
+    ctx.fillStyle = colors.accent;
+    ctx.fillText('>', left + (groupColumns + 2) * charWidth, this.displayRowY);
 
-    // Footer: status plus compact key legend.
-    ctx.fillStyle = '#111619';
-    ctx.fillRect(0, height - footerHeight, width, footerHeight);
     const status = this.statusUntil > performance.now()
       ? this.status
       : selectedItem?.description || 'LIVE VALUES — CHANGES APPLY IMMEDIATELY';
-    ctx.fillStyle = '#F0A128';
-    ctx.font = '700 10px "B612 Mono", "Courier New", monospace';
-    ctx.fillText(status.slice(0, Math.max(24, Math.floor(width / 8.2))), 28, height - 39);
-    ctx.fillStyle = '#AAB2B4';
-    ctx.font = '400 10px "B612 Mono", "Courier New", monospace';
     const legend = width < 840
-      ? 'UP/DOWN ROW  LEFT/RIGHT GROUP  +/- CHANGE  ENTER EDIT  ESC CLOSE'
-      : '↑↓ ROW   ←→ GROUP   +/− CHANGE   ALT +/− ×10   ENTER EDIT / RUN   ESC OR C CLOSE';
-    ctx.fillText(legend, 28, height - 17);
+      ? '[UP/DN] ROW [LT/RT] GROUP [+/-] CHANGE [ENTER] EDIT [ESC] CLOSE'
+      : '[UP/DN] ROW  [LT/RT] GROUP  [+/-] CHANGE  [ALT +/-] x10  [ENTER] EDIT/RUN  [ESC/C] CLOSE';
+    drawAt(footerSeparatorRow, 0, splitBorder(), colors.dim, false, entrance);
+    drawAt(footerSeparatorRow + 1, 0, terminalRow(`STATUS> ${ascii(status)}`), colors.accent, true, entrance);
+    drawAt(footerSeparatorRow + 2, 0, terminalRow(`KEYS>   ${legend}`), colors.text, false, entrance);
+    drawAt(footerSeparatorRow + 3, 0, fullBorder(), colors.dim, false, entrance);
+
     ctx.restore();
   }
 }

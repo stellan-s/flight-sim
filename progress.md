@@ -12,6 +12,9 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## Current work
 
+- Restyled the runtime configuration console as a literal ASCII terminal UI:
+  character borders, bracketed values, dotted leaders, `>` selection cursors,
+  a phosphor-dark surface, and one amber interaction accent.
 - Added a full-screen runtime configuration console opened with C or Enter.
 - The console exposes live state, force/moment gains, every aircraft coefficient,
   integration/input tuning, wind, display/navigation settings, airports, runways,
@@ -45,6 +48,7 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## TODO
 
+- [x] Finish browser visual QA for the ASCII configuration restyle.
 - [x] Complete browser interaction and visual QA for the configuration console.
 - [x] Add focused regression tests for runtime force multipliers and editor controls.
 - [x] Fix reciprocal active-runway selection and approach guidance.
