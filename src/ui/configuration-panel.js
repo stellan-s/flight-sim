@@ -779,13 +779,17 @@ export class ConfigurationPanel {
     const left = Math.round((width - totalColumns * charWidth) / 2);
     const top = Math.round((height - totalRows * lineHeight) / 2);
 
+    // The settings terminal is part of the chart surface, so it follows the
+    // live palette and repaints immediately when Map theme changes.
+    const palette = this.simulator.chart.palette;
     const colors = {
-      background: '#07100D',
-      text: '#AEBBAD',
-      bright: '#E4E9DF',
-      dim: '#526157',
-      faint: '#26342C',
-      accent: '#FFB347'
+      background: palette.background,
+      text: palette.foreground,
+      bright: palette.heading,
+      dim: palette.muted,
+      faint: palette.gridLabel,
+      accent: palette.accent,
+      danger: palette.danger
     };
 
     const ascii = value => String(value)
@@ -897,11 +901,12 @@ export class ConfigurationPanel {
     const status = this.statusUntil > performance.now()
       ? this.status
       : selectedItem?.description || 'LIVE VALUES — CHANGES APPLY IMMEDIATELY';
+    const statusColor = /FAILED|INVALID|ERROR/.test(status) ? colors.danger : colors.accent;
     const legend = width < 840
       ? '[UP/DN] ROW [LT/RT] GROUP [+/-] CHANGE [ENTER] EDIT [ESC] CLOSE'
       : '[UP/DN] ROW  [LT/RT] GROUP  [+/-] CHANGE  [ALT +/-] x10  [ENTER] EDIT/RUN  [ESC/C] CLOSE';
     drawAt(footerSeparatorRow, 0, splitBorder(), colors.dim, false, entrance);
-    drawAt(footerSeparatorRow + 1, 0, terminalRow(`STATUS> ${ascii(status)}`), colors.accent, true, entrance);
+    drawAt(footerSeparatorRow + 1, 0, terminalRow(`STATUS> ${ascii(status)}`), statusColor, true, entrance);
     drawAt(footerSeparatorRow + 2, 0, terminalRow(`KEYS>   ${legend}`), colors.text, false, entrance);
     drawAt(footerSeparatorRow + 3, 0, fullBorder(), colors.dim, false, entrance);
 

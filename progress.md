@@ -12,6 +12,13 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## Current work
 
+- Made `black-white` the startup map theme and connected the full-screen ASCII
+  settings console to the active chart palette. Theme changes now repaint the
+  console live, including its background, frame, text, selection, status, and
+  error colors.
+- Verified the black-and-white startup chart and settings console in the browser,
+  then cycled the open console through all fourteen themes. Every palette remained
+  readable and the browser console reported no errors.
 - Expanded the live chart palette from four to fourteen themes: `black-white`,
   GitHub light/dark, Nord, Dracula, Solarized light/dark, Gruvbox Dark, Tokyo
   Night, and Catppuccin Mocha join the existing themes. Each palette covers the
@@ -74,6 +81,7 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## TODO
 
+- [x] Verify black-white startup and live settings-console recoloring in browser.
 - [x] Complete settings interaction and visual QA for all fourteen map themes.
 - [x] Complete browser motion and visual QA for the restored viewport pitch line.
 - [x] Complete browser input and visual QA for the center throttle indicator.

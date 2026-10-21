@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { ConfigurationPanel } from '../src/ui/configuration-panel.js';
 import { AircraftSpecs, AircraftState, Controls } from '../src/core/aircraft.js';
 import { WindModel } from '../src/navigation/wind.js';
+import { CHART_THEMES } from '../src/rendering/chart-themes.js';
 
 function makeSimulator() {
   return {
@@ -29,9 +30,13 @@ function makeSimulator() {
       baseScale: 10000,
       rotationMode: 'north-up',
       theme: 'paper',
+      palette: CHART_THEMES.paper,
       setZoom(value) { this.zoom = value; },
       setRotationMode(value) { this.rotationMode = value; },
-      setTheme(value) { this.theme = value; }
+      setTheme(value) {
+        this.theme = value;
+        this.palette = CHART_THEMES[value];
+      }
     },
     vectors: { vectorMode: 'all' },
     energyDiagram: {
@@ -143,4 +148,33 @@ test('plus cycles the live map theme from the display category', () => {
 
   assert.equal(simulator.chart.theme, 'night');
   assert.equal(panel.getState().selectedValue, 'night');
+});
+
+test('configuration console renders with the active chart palette', () => {
+  const simulator = makeSimulator();
+  const panel = new ConfigurationPanel(simulator);
+  const operations = [];
+  const ctx = {
+    _fillStyle: '',
+    set fillStyle(value) { this._fillStyle = value; },
+    get fillStyle() { return this._fillStyle; },
+    save() {},
+    restore() {},
+    measureText: () => ({ width: 7 }),
+    fillRect(...args) { operations.push(['fillRect', this._fillStyle, ...args]); },
+    fillText(text) { operations.push(['fillText', this._fillStyle, text]); }
+  };
+  const canvas = { width: 1280, height: 720 };
+
+  panel.open();
+  simulator.chart.setTheme('black-white');
+  panel.draw(ctx, canvas);
+  assert.ok(operations.some(([name, color]) => name === 'fillRect' && color === '#FFFFFF'));
+  assert.ok(operations.some(([name, color]) => name === 'fillText' && color === '#000000'));
+
+  operations.length = 0;
+  simulator.chart.setTheme('nord');
+  panel.draw(ctx, canvas);
+  assert.ok(operations.some(([name, color]) => name === 'fillRect' && color === '#2E3440'));
+  assert.ok(operations.some(([name, color]) => name === 'fillText' && color === '#88C0D0'));
 });

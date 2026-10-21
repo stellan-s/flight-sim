@@ -28,7 +28,7 @@ export const CONFIG = {
   MAX_ZOOM: 15.0,
   MIN_ZOOM: 0.1,
   ZOOM_SPEED: 1.1,         // Zoom multiplier per scroll
-  DEFAULT_MAP_THEME: 'paper',
+  DEFAULT_MAP_THEME: 'black-white',
 
   // Default rotation mode: 'north-up' or 'track-up'
   DEFAULT_ROTATION_MODE: 'north-up',

@@ -34,6 +34,7 @@ test('chart defaults and zoom limits come from configuration', () => {
   assert.equal(chart.baseScale, CONFIG.BASE_SCALE);
   assert.equal(chart.rotationMode, CONFIG.DEFAULT_ROTATION_MODE);
   assert.equal(chart.theme, CONFIG.DEFAULT_MAP_THEME);
+  assert.equal(CONFIG.DEFAULT_MAP_THEME, 'black-white');
   assert.deepEqual(CHART_THEME_NAMES, [
     'paper', 'night', 'phosphor', 'amber', 'black-white',
     'github-light', 'github-dark', 'nord', 'dracula',
@@ -47,10 +48,10 @@ test('chart defaults and zoom limits come from configuration', () => {
   chart.setZoom(CONFIG.MIN_ZOOM - 1);
   assert.equal(chart.zoom, CONFIG.MIN_ZOOM);
 
-  const paperBackground = chart.palette.background;
+  const defaultBackground = chart.palette.background;
   assert.equal(chart.setTheme('night'), true);
   assert.equal(chart.theme, 'night');
-  assert.notEqual(chart.palette.background, paperBackground);
+  assert.notEqual(chart.palette.background, defaultBackground);
 
   assert.equal(chart.setTheme('not-a-theme'), false);
   assert.equal(chart.theme, 'night');
