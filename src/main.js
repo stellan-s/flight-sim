@@ -18,6 +18,7 @@ import { calculateLevelFlightTrim } from './core/trim.js';
 import { GroundSystem } from './core/ground.js';
 import { FlightEnvelopeSystem } from './core/flight-envelope.js';
 import { PersistenceManager } from './core/persistence.js';
+import { StallWarningPlayer } from './audio/stall-warning.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
@@ -52,6 +53,8 @@ class FlightSimulator {
     this.controls = new Controls();
     this.envelope = new FlightEnvelopeSystem(this.specs);
     this.envelopeState = this.envelope.status;
+    this.stallWarning = new StallWarningPlayer(CONFIG);
+    this.stallWarning.attachUnlock(document);
 
     // Set the configured initial flight condition.
     this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
@@ -627,7 +630,8 @@ class FlightSimulator {
         overspeed: this.envelopeState.overspeed,
         structuralDamage: round(this.envelopeState.structuralDamage),
         failureCause: this.envelopeState.failureCause,
-        groundEffect: round(this.envelopeState.groundEffect)
+        groundEffect: round(this.envelopeState.groundEffect),
+        audibleWarning: this.stallWarning.getState()
       } : null,
       persistence: {
         autoSave: this.persistence.autoSave,
@@ -652,6 +656,10 @@ class FlightSimulator {
   }
 
   render() {
+    this.stallWarning.update(this.envelopeState, {
+      muted: this.paused || this.configPanel.isOpen
+    });
+
     // Update aircraft heading for track-up mode
     this.chart.aircraftHeading = this.state.orientation.yaw;
 

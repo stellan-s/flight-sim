@@ -165,3 +165,16 @@ Implement all seven approved simulator improvements while preserving the existin
   configuration, presets, and landing summaries only.
 - [ ] Add weather layers, turbulence, and cloud/visibility effects.
 - [ ] Add engine mixture, propeller, fuel, and failure management.
+
+## Audible stall warning (2026-10-25)
+
+- Added a dedicated browser Web Audio stall horn, distinct from the VOR Morse
+  identifier: 680 Hz triangle tone, 3.2 Hz pulse cadence, and 0.12 default gain.
+- The horn arms on the first keyboard or pointer interaction, follows live stall
+  severity, becomes continuous in a fully developed stall, and mutes while the
+  simulator is paused or the configuration console is open.
+- Added persistent ASCII `ENVELOPE` controls for enable/disable, volume,
+  frequency, and pulse rate, plus live horn state in `render_game_to_text`.
+- Full check passes: 59 tests plus JavaScript syntax validation.
+- Browser QA verified Web Audio unlock, audible/silent pulse phases, pause mute,
+  the warning HUD, and the ASCII audio settings with no console or page errors.

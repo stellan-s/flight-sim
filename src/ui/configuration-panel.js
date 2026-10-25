@@ -481,6 +481,19 @@ export class ConfigurationPanel {
         readonlyItem('Load factor', () => sim.envelopeState?.loadFactorG ?? 0, 'G'),
         readonlyItem('Structural damage', () => (sim.envelopeState?.structuralDamage ?? 0) * 100, '%'),
         readonlyItem('Ground effect', () => (sim.envelopeState?.groundEffect ?? 0) * 100, '%'),
+        heading('AUDIBLE STALL WARNING'),
+        readonlyItem('Horn state', () => sim.stallWarning?.getState().active ? 'ACTIVE' : 'SILENT'),
+        boolItem('Audible warning', () => CONFIG.STALL_WARNING_ENABLED,
+          value => { CONFIG.STALL_WARNING_ENABLED = value; }),
+        numericProperty(CONFIG, 'STALL_WARNING_VOLUME', 'Warning volume', {
+          step: 0.01, min: 0, max: 1, precision: 2
+        }),
+        numericProperty(CONFIG, 'STALL_WARNING_FREQUENCY', 'Warning frequency', {
+          step: 10, min: 80, max: 4000, unit: 'Hz'
+        }),
+        numericProperty(CONFIG, 'STALL_WARNING_PULSE_HZ', 'Warning pulse rate', {
+          step: 0.1, min: 0.1, max: 20, precision: 1, unit: 'Hz'
+        }),
         heading('STALL / BUFFET'),
         numberItem('Warning angle', () => specs.stallWarningAlpha * RAD_TO_DEG,
           value => { specs.stallWarningAlpha = value * DEG_TO_RAD; },

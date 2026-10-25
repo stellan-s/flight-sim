@@ -65,6 +65,12 @@ export const CONFIG = {
   // Navigation audio
   MORSE_VOLUME: 0.08,            // Linear Web Audio gain (0=silent, 1=full)
 
+  // Flight-envelope audio
+  STALL_WARNING_ENABLED: true,
+  STALL_WARNING_VOLUME: 0.12,    // Linear Web Audio gain (0=silent, 1=full)
+  STALL_WARNING_FREQUENCY: 680,  // Hz, deliberately distinct from VOR Morse
+  STALL_WARNING_PULSE_HZ: 3.2,
+
   // Instrument rendering
   SHOW_PITCH_INDICATOR: true,
   PITCH_SCALE_PIXELS_PER_DEG: 5,   // Pixels per degree for the viewport horizon
