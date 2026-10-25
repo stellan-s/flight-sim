@@ -24,6 +24,7 @@ import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
 import { EnergyDiagram } from './rendering/energy-diagram.js';
 import { ConfigurationPanel } from './ui/configuration-panel.js';
+import { HelpPanel } from './ui/help-panel.js';
 import { InputHandler } from './controls/input.js';
 import { WindModel } from './navigation/wind.js';
 import { VORNavigation } from './navigation/vor.js';
@@ -108,6 +109,7 @@ class FlightSimulator {
 
     // Full runtime configuration console
     this.configPanel = new ConfigurationPanel(this);
+    this.helpPanel = new HelpPanel(this);
 
     // Restore durable tuning and display preferences before world initialization.
     this.persistence = new PersistenceManager();
@@ -556,6 +558,7 @@ class FlightSimulator {
       mode: {
         paused: this.paused,
         helpVisible: this.showHelp,
+        helpSection: this.helpPanel.activeSection,
         configuration: this.configPanel.getState(),
         helpScrollOffset: round(this.helpScrollOffset, 1),
         mapRotation: this.chart.rotationMode,
@@ -807,13 +810,13 @@ class FlightSimulator {
     this.input.drawCrosshair();
 
     // Draw pause indicator
-    if (this.paused && !this.configPanel.isOpen) {
+    if (this.paused && !this.configPanel.isOpen && !this.showHelp) {
       this.drawPauseOverlay();
     }
 
     // Draw help overlay
     if (this.showHelp) {
-      this.drawHelpOverlay();
+      this.helpPanel.draw(this.chart.ctx, this.canvas);
     }
 
     // Configuration is always the topmost full-screen surface.

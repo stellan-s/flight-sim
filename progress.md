@@ -178,3 +178,18 @@ Implement all seven approved simulator improvements while preserving the existin
 - Full check passes: 59 tests plus JavaScript syntax validation.
 - Browser QA verified Web Audio unlock, audible/silent pulse phases, pause mute,
   the warning HUD, and the ASCII audio settings with no console or page errors.
+
+## ASCII help terminal (2026-10-25)
+
+- Rebuilt help as the same full-screen ASCII terminal system used by settings:
+  active chart palette, literal character borders, topic rail, content pane,
+  fixed status/key footer, and ASCII scrollbar.
+- Reorganized the manual into flight controls, navigation, display/system,
+  stall/spin recovery, VOR basics, setup, CDI tracking, and procedures.
+- Help preserves mouse, arrow, page, Home, and End scrolling; the active topic
+  follows the visible content and reopening resets to the first section.
+- The pause overlay no longer bleeds through help, and text state now reports
+  the visible help section.
+- Full check passes: 61 tests plus JavaScript syntax validation.
+- Browser QA verified top/middle/end navigation, close/reopen behavior, and
+  black-white plus Nord rendering with no console or page errors.

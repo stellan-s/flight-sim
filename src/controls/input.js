@@ -261,6 +261,7 @@ export class InputHandler {
       // Reset scroll position when opening help
       if (this.simulator.showHelp) {
         this.simulator.helpScrollOffset = 0;
+        this.simulator.helpOpenedAt = performance.now();
       }
       this.keys['h'] = false;
       this.keys['H'] = false;
