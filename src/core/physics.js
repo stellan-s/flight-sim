@@ -26,6 +26,7 @@
  */
 
 import { calculateAerodynamicForces, calculateMoments } from './forces.js';
+import { earthToBody } from '../utils/coordinates.js';
 
 const g = 9.81; // m/s²
 
@@ -41,6 +42,10 @@ export class PhysicsEngine {
   // Set wind model
   setWindModel(windModel) {
     this.windModel = windModel;
+  }
+
+  setGroundSystem(groundSystem) {
+    this.groundSystem = groundSystem;
   }
 
   // Update wind transformation before physics step
@@ -223,15 +228,27 @@ export class PhysicsEngine {
     this.state.angularVelocity.q = Math.max(-MAX_PITCH_RATE, Math.min(MAX_PITCH_RATE, this.state.angularVelocity.q));
     this.state.angularVelocity.r = Math.max(-MAX_YAW_RATE, Math.min(MAX_YAW_RATE, this.state.angularVelocity.r));
 
-    // Prevent ground collision (simple)
-    const groundAltitude = this.specs.groundAltitude ?? 0;
-    if (this.state.position.altitude < groundAltitude) {
-      this.state.position.altitude = groundAltitude;
-      this.state.velocity.u = 0;
-      this.state.velocity.w = 0;
-      this.state.angularVelocity.p = 0;
-      this.state.angularVelocity.q = 0;
-      this.state.angularVelocity.r = 0;
+    // Resolve runway/terrain contact in ground-relative coordinates after the
+    // free-flight integration step. Standalone physics users retain the simple
+    // flat ground fallback when no ground system is attached.
+    if (this.groundSystem) {
+      this.lastGroundState = this.groundSystem.update(
+        dt,
+        this.state,
+        this.controls,
+        this.windEarth,
+        k1.forces
+      );
+    } else {
+      const groundAltitude = this.specs.groundAltitude ?? 0;
+      if (this.state.position.altitude < groundAltitude) {
+        this.state.position.altitude = groundAltitude;
+        this.state.velocity.u = 0;
+        this.state.velocity.w = 0;
+        this.state.angularVelocity.p = 0;
+        this.state.angularVelocity.q = 0;
+        this.state.angularVelocity.r = 0;
+      }
     }
 
     // Recompute final forces and moments for rendering and diagnostics.
@@ -246,6 +263,20 @@ export class PhysicsEngine {
       this.controls,
       finalForces
     );
+
+    const constraintEarth = this.lastGroundState?.constraintForceEarth;
+    if (this.lastGroundState?.contact && constraintEarth) {
+      const constraintBody = earthToBody(constraintEarth, this.state.orientation);
+      finalForces.body.X += constraintBody.x;
+      finalForces.body.Y += constraintBody.y;
+      finalForces.body.Z += constraintBody.z;
+      finalForces.components.groundReaction = Math.hypot(
+        constraintEarth.north,
+        constraintEarth.east,
+        constraintEarth.down
+      );
+      finalForces.groundReactionEarth = constraintEarth;
+    }
     return { ...finalForces, moments: finalMoments };
   }
 

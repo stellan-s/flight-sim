@@ -120,3 +120,34 @@ test('throttle command produces proportional thrust from idle to full power', ()
   assert.ok(full > 0);
   assert.ok(Math.abs(half / full - 0.5) < 1e-12);
 });
+
+test('engine thrust is available from rest for a runway takeoff', () => {
+  const state = new AircraftState();
+  state.position.altitude = 1000;
+  state.velocity = { u: 0, v: 0, w: 0 };
+  const specs = new AircraftSpecs();
+  const controls = new Controls();
+  controls.throttle = 1;
+
+  const forces = calculateAerodynamicForces(state, specs, controls);
+
+  assert.ok(forces.components.thrust > 0);
+  assert.ok(forces.body.X > 0);
+  assert.ok(forces.body.Z > 0);
+});
+
+test('stationary crosswind produces lateral force without fake wing lift', () => {
+  const state = new AircraftState();
+  state.position.altitude = 1000;
+  state.velocity = { u: 0, v: 10, w: 0 };
+
+  const forces = calculateAerodynamicForces(
+    state,
+    new AircraftSpecs(),
+    new Controls()
+  );
+
+  assert.equal(forces.aerodynamic.alpha, 0);
+  assert.equal(forces.components.lift, 0);
+  assert.notEqual(forces.components.side, 0);
+});

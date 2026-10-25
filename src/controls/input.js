@@ -230,6 +230,9 @@ export class InputHandler {
       this.controls.throttle = Math.max(0, this.controls.throttle - this.throttleRate * dt);
     }
 
+    // Wheel brakes are held while B is pressed.
+    this.controls.brake = this.keys['b'] || this.keys['B'] ? 1 : 0;
+
     // Reset trim (Home key)
     if (this.keys['Home']) {
       this.elevatorTrim = 0;

@@ -182,4 +182,42 @@ export class InstrumentRenderer {
     ctx.fillText(`${Math.round(command * 100)}%`, x + width / 2, y + height + 11);
     ctx.restore();
   }
+
+  drawGroundStatus(status) {
+    if (!status) return;
+
+    const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
+    const groundLabel = status.contact
+      ? `${status.onRunway ? `${status.airportId ?? 'FIELD'} RWY ${status.runwayId ?? '--'}` : 'OFF RUNWAY'} ${String(status.surfaceType).toUpperCase()}`
+      : `AIRBORNE AGL ${Math.max(0, Math.round(status.aglFt))}FT`;
+    const motionLabel = status.contact
+      ? `GS ${Math.round(status.groundSpeedKt)}KT BRAKE ${Math.round(status.brake * 100)}%`
+      : '';
+    const line = `${status.crashed ? 'CRASHED' : status.phase.toUpperCase()} | ${groundLabel}${motionLabel ? ` | ${motionLabel}` : ''}`;
+    const color = status.crashed
+      ? palette.danger
+      : status.contact ? palette.selectedText : palette.foreground;
+    const x = 20;
+    const y = 57;
+
+    ctx.save();
+    ctx.font = 'bold 10px "B612 Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const width = ctx.measureText(line).width + 10;
+    ctx.fillStyle = palette.panel;
+    ctx.fillRect(x - 5, y - 3, width, status.message ? 31 : 16);
+    ctx.strokeStyle = palette.border;
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(x - 5, y - 3, width, status.message ? 31 : 16);
+    ctx.fillStyle = color;
+    ctx.fillText(line, x, y);
+
+    if (status.message) {
+      ctx.fillStyle = status.crashed ? palette.danger : palette.accent;
+      ctx.fillText(status.message, x, y + 15);
+    }
+    ctx.restore();
+  }
 }

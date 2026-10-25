@@ -17,10 +17,28 @@ export const CONFIG = {
   INITIAL_HEADING: 0,      // degrees
   INITIAL_PITCH_OFFSET: 0, // degrees from calculated level-flight trim
   INITIAL_ROLL: 0,         // degrees
+  INITIAL_START_MODE: 'runway', // 'runway' or 'airborne'
+  INITIAL_AIRPORT: 'KABC',
+  INITIAL_RUNWAY_END: '18',
 
   // Initial wind conditions
   INITIAL_WIND_DIRECTION: 270,  // degrees
   INITIAL_WIND_SPEED: 15,       // knots
+
+  // Ground interaction and landing evaluation
+  GEAR_HEIGHT_FT: 4.1,
+  GROUND_CONTACT_TOLERANCE_FT: 0.35,
+  RUNWAY_ROLLING_RESISTANCE: 0.018,
+  ROUGH_GROUND_ROLLING_RESISTANCE: 0.09,
+  BRAKE_DECELERATION: 5.2,          // m/s2 at full brake
+  LATERAL_TIRE_GRIP: 4.5,           // m/s2 cross-runway correction
+  GROUND_STEER_RATE: 24,            // deg/s at full rudder
+  GROUND_MAX_ROTATION_DEG: 14,
+  BOUNCE_SINK_RATE_FPM: 360,
+  HARD_LANDING_SINK_RATE_FPM: 480,
+  CRASH_SINK_RATE_FPM: 900,
+  CRASH_BANK_DEG: 32,
+  CRASH_PITCH_DEG: 22,
 
   // Chart rendering
   BASE_SCALE: 10000,       // meters per degree at zoom=1
@@ -43,6 +61,9 @@ export const CONFIG = {
 
   // VOR visualization
   VOR_RADIAL_LENGTH_PIXELS: 2000,
+
+  // Navigation audio
+  MORSE_VOLUME: 0.08,            // Linear Web Audio gain (0=silent, 1=full)
 
   // Instrument rendering
   SHOW_PITCH_INDICATOR: true,

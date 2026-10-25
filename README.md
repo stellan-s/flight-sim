@@ -28,6 +28,17 @@ A 6DOF (Six Degrees of Freedom) flight simulator featuring realistic physics, VO
   - Wind velocity vectors displayed on chart
   - Groundspeed and drift calculations
 
+- **Runway and Ground Operations**: Start, roll, rotate, land, and stop
+  - Configurable airport and runway-end spawn at field elevation
+  - Runway/grass rolling resistance, crosswind tire grip, steering, and wheel brakes
+  - Force-based liftoff, touchdown bounce, landing grades, and crash thresholds
+  - Live ground state plus a ground-reaction force vector
+
+- **Persistent Configuration**: Keep a tuned simulator between sessions
+  - Automatic browser-local restore for flight model, wind, display, and chart data
+  - Named local presets plus portable JSON import/export
+  - Landing history with score, sink rate, runway, and attitude
+
 - **Force Vector Visualization**: Educational display of flight forces
   - Lift, drag, thrust, and weight vectors
   - Velocity, wind, and ground track vectors
@@ -52,7 +63,9 @@ flight-sim/
     ├── core/                  # Physics simulation
     │   ├── aircraft.js        # Aircraft state and specs
     │   ├── physics.js         # 6DOF physics engine (RK4)
-    │   └── forces.js          # Aerodynamic calculations
+    │   ├── forces.js          # Aerodynamic calculations
+    │   ├── ground.js          # Runway contact and landing evaluation
+    │   └── persistence.js     # Autosave, presets, import/export, history
     ├── navigation/            # Navigation systems
     │   ├── vor.js            # VOR navigation logic
     │   └── wind.js           # Dynamic wind model
@@ -103,6 +116,7 @@ npm run check
   - ←/→: Aileron (roll left/right)
 - **A/D**: Rudder (yaw left/right)
 - **W/S**: Throttle (increase/decrease)
+- **B**: Hold wheel brakes
 - **Page Up/Down**: Elevator trim
 - **Home**: Reset elevator trim
 
@@ -126,8 +140,8 @@ npm run check
 
 The configuration console pauses the simulation and exposes the live aircraft
 state, force and moment gains, aerodynamic coefficients, airframe geometry,
-controls, wind, display settings, navigation data, airports, runways, VORs,
-and obstacles.
+controls, wind, ground handling, persistence, display settings, navigation data,
+airports, runways, VORs, and obstacles.
 
 - **Up / Down**: Select a parameter
 - **Left / Right**: Switch parameter group
@@ -141,6 +155,20 @@ and obstacles.
 Changes apply immediately to the running simulator. The `RETRIM` and `RESTART`
 actions in the Session group let you settle the aircraft after changing the
 flight model or apply edited initial conditions.
+
+### Starting and persistence
+
+The default session starts stationary on runway 18 at KABC. Apply power with W,
+rotate with Arrow Down, and hold B to brake after reducing power with S. Start
+mode, airport, runway end, ground friction, steering, rotation, and landing
+thresholds are all editable in the `SESSION` and `GROUND OPS` groups.
+
+When autosave is enabled, configuration changes are stored in browser-local
+storage and restored on the next load. The `PERSISTENCE` group can save, load,
+or delete named presets, download/upload a portable JSON configuration, and
+inspect or clear the last 50 landing results. Aircraft position and active
+flight progress are intentionally not restored; loading starts a fresh flight
+using the restored configuration.
 
 ## Coordinate Systems
 
@@ -275,7 +303,7 @@ The simulator uses:
 
 ## Known Limitations
 
-- No terrain elevation (flat earth approximation)
+- No terrain mesh; airports use flat field elevations and all other terrain is flat
 - Simplified aerodynamic model (no ground effect, wake turbulence)
 - No weather beyond wind (no thermals, clouds)
 - Limited instrumentation (no full glass cockpit)

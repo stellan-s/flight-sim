@@ -1,4 +1,22 @@
-const theme = values => Object.freeze(values);
+const theme = values => Object.freeze({
+  ...values,
+  vectorLiftHigh: values.vectorLiftHigh ?? values.selectedText,
+  vectorLiftNominal: values.vectorLiftNominal ?? values.warning,
+  vectorLiftLow: values.vectorLiftLow ?? values.danger,
+  vectorWeight: values.vectorWeight ?? values.muted,
+  vectorThrust: values.vectorThrust ?? values.radial,
+  vectorDrag: values.vectorDrag ?? values.danger,
+  vectorSide: values.vectorSide ?? values.direct,
+  vectorResultantBalanced: values.vectorResultantBalanced ?? values.course,
+  vectorResultantUnbalanced: values.vectorResultantUnbalanced ?? values.danger,
+  vectorRollMoment: values.vectorRollMoment ?? values.direct,
+  vectorPitchMoment: values.vectorPitchMoment ?? values.accent,
+  vectorYawMoment: values.vectorYawMoment ?? values.warning,
+  vectorVelocity: values.vectorVelocity ?? values.accent,
+  vectorWind: values.vectorWind ?? values.wind,
+  vectorGroundTrack: values.vectorGroundTrack ?? values.warning,
+  vectorGroundReaction: values.vectorGroundReaction ?? values.course
+});
 
 export const CHART_THEMES = Object.freeze({
   paper: theme({
@@ -134,7 +152,23 @@ export const CHART_THEMES = Object.freeze({
     danger: '#000000',
     energyTotal: '#000000',
     energyPotential: '#666666',
-    energyKinetic: '#333333'
+    energyKinetic: '#333333',
+    vectorLiftHigh: '#009E73',
+    vectorLiftNominal: '#0072B2',
+    vectorLiftLow: '#D55E00',
+    vectorWeight: '#4D4D4D',
+    vectorThrust: '#009E73',
+    vectorDrag: '#D55E00',
+    vectorSide: '#A23BAA',
+    vectorResultantBalanced: '#2E7D32',
+    vectorResultantUnbalanced: '#C62828',
+    vectorRollMoment: '#A23BAA',
+    vectorPitchMoment: '#1565C0',
+    vectorYawMoment: '#E06C00',
+    vectorVelocity: '#0072B2',
+    vectorWind: '#6A5ACD',
+    vectorGroundTrack: '#E06C00',
+    vectorGroundReaction: '#009E73'
   }),
   'github-light': theme({
     background: '#FFFFFF',

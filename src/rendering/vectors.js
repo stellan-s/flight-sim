@@ -60,7 +60,7 @@ export class VectorRenderer {
     const endX = pos.x + dx;
     const endY = pos.y + dy;
 
-    const arrowColor = label === 'LIFT' ? palette.foreground : color;
+    const arrowColor = color;
 
     // Draw line
     ctx.strokeStyle = arrowColor;
@@ -92,14 +92,8 @@ export class VectorRenderer {
     const labelX = endX + 10;
     const labelY = endY;
 
-    let bgColor = palette.panelSolid;
-    let textColor = color;
-
-    if (label === 'WEIGHT') {
-      textColor = palette.muted;
-    }
-
-    this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(force)}N`, bgColor, textColor);
+    const bgColor = palette.panelSolid;
+    this.chart.drawLabel(labelX, labelY, `${label}: ${Math.round(force)}N`, bgColor, color);
   }
 
   drawMomentArrow(state, moment, label, color, radius, startAngle) {
@@ -189,20 +183,30 @@ export class VectorRenderer {
 
       let liftColor;
       if (liftToWeightRatio > 1.05) {
-        liftColor = palette.selectedText;
+        liftColor = palette.vectorLiftHigh;
       } else if (liftToWeightRatio < 0.95) {
-        liftColor = palette.danger;
+        liftColor = palette.vectorLiftLow;
       } else {
-        liftColor = palette.warning;
+        liftColor = palette.vectorLiftNominal;
       }
 
       // Individual forces
       this.drawForceVector(state, liftValue, 'LIFT', liftColor, liftEarth, scale);
-      this.drawForceVector(state, weightValue, 'WEIGHT', palette.muted, weightEarth, scale);
-      this.drawForceVector(state, forces.components.thrust, 'THRUST', palette.radial, thrustEarth, scale);
-      this.drawForceVector(state, forces.components.drag, 'DRAG', palette.danger, dragEarth, scale);
+      this.drawForceVector(state, weightValue, 'WEIGHT', palette.vectorWeight, weightEarth, scale);
+      this.drawForceVector(state, forces.components.thrust, 'THRUST', palette.vectorThrust, thrustEarth, scale);
+      this.drawForceVector(state, forces.components.drag, 'DRAG', palette.vectorDrag, dragEarth, scale);
       if (Math.abs(forces.components.side) >= 1) {
-        this.drawForceVector(state, forces.components.side, 'SIDE', palette.direct, sideEarth, scale);
+        this.drawForceVector(state, forces.components.side, 'SIDE', palette.vectorSide, sideEarth, scale);
+      }
+      if (forces.components.groundReaction >= 1 && forces.groundReactionEarth) {
+        this.drawForceVector(
+          state,
+          forces.components.groundReaction,
+          'GROUND',
+          palette.vectorGroundReaction,
+          forces.groundReactionEarth,
+          scale
+        );
       }
 
       // Resultant
@@ -212,13 +216,15 @@ export class VectorRenderer {
         forces.body.Z * forces.body.Z
       );
 
-      const resultantColor = resultant < 500 ? palette.course : palette.danger;
+      const resultantColor = resultant < 500
+        ? palette.vectorResultantBalanced
+        : palette.vectorResultantUnbalanced;
       this.drawForceVector(state, resultant, 'RESULTANT', resultantColor, resultantEarth, scale);
 
       if (forces.moments) {
-        this.drawMomentArrow(state, forces.moments.L, 'L', palette.direct, 24, Math.PI);
-        this.drawMomentArrow(state, forces.moments.M, 'M', palette.accent, 31, -Math.PI / 2);
-        this.drawMomentArrow(state, forces.moments.N, 'N', palette.warning, 38, 0);
+        this.drawMomentArrow(state, forces.moments.L, 'L', palette.vectorRollMoment, 24, Math.PI);
+        this.drawMomentArrow(state, forces.moments.M, 'M', palette.vectorPitchMoment, 31, -Math.PI / 2);
+        this.drawMomentArrow(state, forces.moments.N, 'N', palette.vectorYawMoment, 38, 0);
       }
     }
 
@@ -248,7 +254,7 @@ export class VectorRenderer {
       z: V * Math.sin(alpha) * Math.cos(beta)
     };
     const velEarth = bodyToEarth(velBody, state.orientation);
-    this.drawVelocityVector(state, V, 'VELOCITY', palette.accent, velEarth, scale);
+    this.drawVelocityVector(state, V, 'VELOCITY', palette.vectorVelocity, velEarth, scale);
 
     // 2. WIND VECTOR - light gray/blue
     const windNorth = wind ? wind.windNorth : 0;
@@ -262,7 +268,7 @@ export class VectorRenderer {
         east: windEast,
         down: windDown
       };
-      this.drawVelocityVector(state, windSpeed, 'WIND', palette.wind, windEarth, scale);
+      this.drawVelocityVector(state, windSpeed, 'WIND', palette.vectorWind, windEarth, scale);
     }
 
     // 3. GROUND TRACK VECTOR (Velocity + Wind) - brown/orange
@@ -273,7 +279,7 @@ export class VectorRenderer {
     );
     const groundSpeed = getHorizontalSpeed(groundEarth);
     groundEarth.down = 0;
-    this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', palette.warning, groundEarth, scale);
+    this.drawVelocityVector(state, groundSpeed, 'GROUND TRACK', palette.vectorGroundTrack, groundEarth, scale);
   }
 
   // Draw velocity vector (similar to force vector but for velocities)

@@ -12,6 +12,41 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## Current work
 
+- Lowered the 1020 Hz VOR Morse identifier peak gain from 0.30 to 0.08
+  (approximately 11.5 dB quieter) and exposed it as a live, persistent
+  `Morse identifier volume` control in the ASCII `NAVIGATION` group.
+- Added runway-start ground operations: configured airport/runway-end spawn,
+  airport elevation, runway and rough-surface friction, wheel brakes, crosswind
+  tire grip, rudder steering, neutral-rudder runway alignment, and a 14-degree
+  ground-rotation limit.
+- Ground contact now uses earth-relative motion while flight remains air-relative,
+  so a stationary aircraft stays still in crosswind. Liftoff occurs when the
+  free-flight force exceeds the support force; touchdown handling grades smooth,
+  good, firm, hard, bounce, and crash outcomes.
+- Added a theme-aware ground status readout and ground-reaction vector. The
+  deterministic text state reports runway, surface, above-ground height, brake,
+  ground speed, phase, and the latest landing result.
+- Added browser-local persistence for configuration, aircraft parameters, input
+  tuning, wind, display state, editable chart data, and persistence preferences.
+  It supports automatic restore, named presets, portable JSON import/export,
+  and the last 50 landing reports.
+- Added `GROUND OPS` and `PERSISTENCE` groups to the ASCII console and B as a
+  hold-to-brake control. Both pages were exercised through the real keyboard
+  flow and visually inspected in the default black-and-white theme.
+- Browser checks verified a wind-correct stationary runway start, acceleration,
+  complete braking, runway-aligned ground roll, force-based liftoff at 55 kt and
+  14 degrees, named-preset/theme restoration after reload, and a clean console.
+  Two restarted flights also produced independent `FIRM` and `GOOD` touchdown
+  reports, both of which remained in landing history after a page reload.
+- Added focused ground and persistence tests covering runway spawn, braking,
+  yaw/rotation constraints, liftoff, touchdown grades, bounce/crash behavior,
+  autosave restore, named/JSON presets, and landing-history retention.
+- Kept the default chart and settings console monochrome while restoring a
+  separate high-contrast semantic color system for force, moment, airspeed,
+  wind, and ground-track vectors in the `black-white` theme.
+- Browser checks verified the colored vectors in both trimmed and maneuvering
+  flight against the monochrome chart, with matching arrow/label colors and no
+  console errors.
 - Made `black-white` the startup map theme and connected the full-screen ASCII
   settings console to the active chart palette. Theme changes now repaint the
   console live, including its background, frame, text, selection, status, and
@@ -81,6 +116,12 @@ Implement all seven approved simulator improvements while preserving the existin
 
 ## TODO
 
+- [x] Verify runway start, roll, braking, rotation, and liftoff in the browser.
+- [x] Verify autosave and a named preset survive a browser reload.
+- [x] Verify the ASCII Ground Ops and Persistence screens.
+- [ ] Add a full time-series flight replay; the current persistence layer stores
+  configuration, presets, and landing summaries only.
+- [x] Verify colored vectors against the black-and-white chart in live flight.
 - [x] Verify black-white startup and live settings-console recoloring in browser.
 - [x] Complete settings interaction and visual QA for all fourteen map themes.
 - [x] Complete browser motion and visual QA for the restored viewport pitch line.

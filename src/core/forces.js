@@ -61,27 +61,16 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
   };
 
   const V = Math.sqrt(v_rel.u * v_rel.u + v_rel.v * v_rel.v + v_rel.w * v_rel.w);
+  const longitudinalV = Math.hypot(v_rel.u, v_rel.w);
 
-  // Minimum velocity threshold to prevent division errors
-  if (V < 1.0) {
-    return {
-      body: { X: 0, Y: 0, Z: 0 },
-      components: {
-        lift: 0,
-        drag: 0,
-        thrust: 0,
-        weight: specs.mass * g * (specs.gravityMultiplier ?? 1),
-        side: 0
-      },
-      aerodynamic: { alpha: 0, beta: 0, Cl: 0, Cd: 0, Cy: 0, q: 0, V: 0 }
-    };
-  }
-
-  // Dynamic pressure
-  const q = 0.5 * rho * V * V;
+  // Longitudinal wing forces use forward/vertical airflow. Lateral derivatives
+  // retain total airflow so a stationary aircraft can still weathercock in a
+  // crosswind without treating side flow as an extreme angle of attack.
+  const q = 0.5 * rho * longitudinalV * longitudinalV;
+  const lateralQ = 0.5 * rho * V * V;
 
   // Angle of attack and sideslip (clamped)
-  const alpha = Math.atan2(v_rel.w, v_rel.u);
+  const alpha = v_rel.u > 1 ? Math.atan2(v_rel.w, v_rel.u) : 0;
   const beta = V > 0 ? Math.asin(Math.max(-1, Math.min(1, v_rel.v / V))) : 0;
 
   // Non-dimensional rates for damping/side force terms
@@ -122,7 +111,7 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
              specs.Cy_da * aileron_rad +
              specs.Cy_dr * rudder_rad;
 
-  const side = q * specs.wingArea * Cy * (specs.sideForceMultiplier ?? 1);
+  const side = lateralQ * specs.wingArea * Cy * (specs.sideForceMultiplier ?? 1);
 
   // === THRUST ===
   // Engine power decreases with altitude
@@ -174,6 +163,7 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
       Cd: Cd,
       Cy: Cy,
       q: q,
+      lateralQ: lateralQ,
       V: V
     }
   };
@@ -184,7 +174,8 @@ export function calculateMoments(state, specs, controls, forces) {
   const rho = getAirDensity(altitude);
 
   const V = state.getVelocityMagnitude();
-  const q_dyn = 0.5 * rho * V * V;
+  const q_dyn = forces?.aerodynamic?.q ?? 0.5 * rho * V * V;
+  const q_lateral = forces?.aerodynamic?.lateralQ ?? 0.5 * rho * V * V;
   const alpha = forces?.aerodynamic?.alpha ?? state.getAlpha();
   const beta = forces?.aerodynamic?.beta ?? state.getBeta();
 
@@ -224,7 +215,7 @@ export function calculateMoments(state, specs, controls, forces) {
              specs.Cl_da * aileron_rad +
              specs.Cl_dr * rudder_rad;
 
-  const L_roll = q_dyn * S * b * Cl * (specs.rollMomentMultiplier ?? 1);
+  const L_roll = q_lateral * S * b * Cl * (specs.rollMomentMultiplier ?? 1);
 
   // === YAWING MOMENT (N) ===
   // Cn = Cn_beta * β + Cn_p * p̂ + Cn_r * r̂ + Cn_da * δa + Cn_dr * δr
@@ -234,7 +225,7 @@ export function calculateMoments(state, specs, controls, forces) {
              specs.Cn_da * aileron_rad +
              specs.Cn_dr * rudder_rad;
 
-  const N_yaw = q_dyn * S * b * Cn * (specs.yawMomentMultiplier ?? 1);
+  const N_yaw = q_lateral * S * b * Cn * (specs.yawMomentMultiplier ?? 1);
 
   return {
     L: L_roll,   // Roll moment

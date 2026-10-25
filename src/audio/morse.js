@@ -4,6 +4,7 @@
  */
 
 import { MORSE_CODE } from '../utils/morse-data.js';
+import { CONFIG } from '../config.js';
 
 export class MorseCodePlayer {
   constructor() {
@@ -47,9 +48,10 @@ export class MorseCodePlayer {
 
       // Envelope to avoid clicks
       const now = this.audioContext.currentTime;
+      const volume = Math.max(0, Math.min(1, CONFIG.MORSE_VOLUME));
       gainNode.gain.setValueAtTime(0, now);
-      gainNode.gain.linearRampToValueAtTime(0.3, now + 0.005); // Quick attack
-      gainNode.gain.setValueAtTime(0.3, now + duration / 1000 - 0.005);
+      gainNode.gain.linearRampToValueAtTime(volume, now + 0.005); // Quick attack
+      gainNode.gain.setValueAtTime(volume, now + duration / 1000 - 0.005);
       gainNode.gain.linearRampToValueAtTime(0, now + duration / 1000); // Quick release
 
       oscillator.start(now);

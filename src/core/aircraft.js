@@ -67,6 +67,7 @@ export class AircraftState {
 
   // Get angle of attack (radians)
   getAlpha() {
+    if (this.velocity.u <= 1) return 0;
     return Math.atan2(this.velocity.w, this.velocity.u);
   }
 
@@ -190,5 +191,6 @@ export class Controls {
     this.aileron = 0;     // Roll control (-1=left, +1=right)
     this.rudder = 0;      // Yaw control (-1=left, +1=right)
     this.throttle = 0.7;  // Throttle (0=idle, 1=full)
+    this.brake = 0;       // Wheel brakes (0=released, 1=full)
   }
 }

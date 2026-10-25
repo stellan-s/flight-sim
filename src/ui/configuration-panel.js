@@ -138,6 +138,22 @@ export class ConfigurationPanel {
     const input = sim.input;
     const wind = sim.wind;
     const features = sim.chartFeatures ?? { airports: [], vors: [], obstacles: [] };
+    const startAirportOptions = (features.airports ?? []).map(airport => airport.id);
+    if (!startAirportOptions.includes(CONFIG.INITIAL_AIRPORT)) {
+      startAirportOptions.unshift(CONFIG.INITIAL_AIRPORT);
+    }
+    const startAirport = (features.airports ?? []).find(airport =>
+      airport.id === CONFIG.INITIAL_AIRPORT
+    );
+    const startRunwayOptions = (startAirport?.runways ?? [])
+      .flatMap(runway => runway.id.split('/'));
+    if (!startRunwayOptions.includes(CONFIG.INITIAL_RUNWAY_END)) {
+      startRunwayOptions.unshift(CONFIG.INITIAL_RUNWAY_END);
+    }
+    const persistence = sim.persistence;
+    const presetNames = persistence?.getPresetNames?.() ?? [];
+    const landingHistory = persistence?.getLandingHistory?.() ?? [];
+    const lastLanding = landingHistory[0];
     const categories = [];
 
     categories.push({
@@ -162,6 +178,16 @@ export class ConfigurationPanel {
           step: 250, min: 250, max: 30000, unit: 'ms'
         }),
         heading('INITIAL CONDITIONS'),
+        enumItem('Start mode', () => CONFIG.INITIAL_START_MODE,
+          value => { CONFIG.INITIAL_START_MODE = value; }, ['runway', 'airborne']),
+        enumItem('Start airport', () => CONFIG.INITIAL_AIRPORT,
+          value => {
+            CONFIG.INITIAL_AIRPORT = value;
+            const airport = (features.airports ?? []).find(entry => entry.id === value);
+            CONFIG.INITIAL_RUNWAY_END = airport?.runways?.[0]?.id.split('/')[0] ?? CONFIG.INITIAL_RUNWAY_END;
+          }, startAirportOptions),
+        enumItem('Start runway end', () => CONFIG.INITIAL_RUNWAY_END,
+          value => { CONFIG.INITIAL_RUNWAY_END = value; }, startRunwayOptions),
         numericProperty(CONFIG, 'INITIAL_ALTITUDE', 'Initial altitude', {
           step: 100, min: 0, max: 60000, unit: 'ft'
         }),
@@ -393,6 +419,104 @@ export class ConfigurationPanel {
     });
 
     categories.push({
+      id: 'ground',
+      label: 'GROUND OPS',
+      description: 'Runway contact, wheel handling, touchdown grading and crash thresholds.',
+      items: [
+        heading('LIVE CONTACT'),
+        readonlyItem('Phase', () => sim.groundState?.phase ?? 'loading'),
+        readonlyItem('Surface', () => sim.groundState?.surfaceType ?? 'none'),
+        readonlyItem('On runway', () => sim.groundState?.onRunway ? 'YES' : 'NO'),
+        readonlyItem('Airport', () => sim.groundState?.airportId ?? 'NONE'),
+        readonlyItem('Runway', () => sim.groundState?.runwayId ?? 'NONE'),
+        readonlyItem('AGL', () => sim.groundState?.aglFt ?? 0, 'ft'),
+        readonlyItem('Ground speed', () => sim.groundState?.groundSpeedKt ?? 0, 'kt'),
+        readonlyItem('Wheel brake', () => (controls.brake ?? 0) * 100, '%'),
+        heading('GEOMETRY / FRICTION'),
+        numericProperty(CONFIG, 'GEAR_HEIGHT_FT', 'Gear / CG height', { step: 0.1, min: 0, max: 100, precision: 1, unit: 'ft' }),
+        numericProperty(CONFIG, 'GROUND_CONTACT_TOLERANCE_FT', 'Contact tolerance', { step: 0.05, min: 0.01, max: 10, precision: 2, unit: 'ft' }),
+        numericProperty(CONFIG, 'RUNWAY_ROLLING_RESISTANCE', 'Runway rolling resistance', { step: 0.001, min: 0, max: 2, precision: 3 }),
+        numericProperty(CONFIG, 'ROUGH_GROUND_ROLLING_RESISTANCE', 'Rough rolling resistance', { step: 0.005, min: 0, max: 2, precision: 3 }),
+        numericProperty(CONFIG, 'BRAKE_DECELERATION', 'Full brake deceleration', { step: 0.1, min: 0, max: 30, precision: 1, unit: 'm/s2' }),
+        numericProperty(CONFIG, 'LATERAL_TIRE_GRIP', 'Lateral tire grip', { step: 0.1, min: 0, max: 30, precision: 1, unit: 'm/s2' }),
+        numericProperty(CONFIG, 'GROUND_STEER_RATE', 'Ground steering rate', { step: 1, min: 0, max: 180, unit: 'deg/s' }),
+        numericProperty(CONFIG, 'GROUND_MAX_ROTATION_DEG', 'Maximum ground pitch', { step: 1, min: 0, max: 45, unit: 'deg' }),
+        heading('LANDING LIMITS'),
+        numericProperty(CONFIG, 'BOUNCE_SINK_RATE_FPM', 'Bounce threshold', { step: 10, min: 0, max: 5000, unit: 'ft/min' }),
+        numericProperty(CONFIG, 'HARD_LANDING_SINK_RATE_FPM', 'Hard landing threshold', { step: 10, min: 0, max: 5000, unit: 'ft/min' }),
+        numericProperty(CONFIG, 'CRASH_SINK_RATE_FPM', 'Crash sink threshold', { step: 10, min: 0, max: 10000, unit: 'ft/min' }),
+        numericProperty(CONFIG, 'CRASH_BANK_DEG', 'Crash bank threshold', { step: 1, min: 0, max: 180, unit: 'deg' }),
+        numericProperty(CONFIG, 'CRASH_PITCH_DEG', 'Crash pitch threshold', { step: 1, min: 0, max: 180, unit: 'deg' }),
+        heading('LAST LANDING'),
+        readonlyItem('Result', () => sim.groundState?.lastReport?.quality ?? 'NONE'),
+        readonlyItem('Score', () => sim.groundState?.lastReport?.score ?? 0),
+        readonlyItem('Sink rate', () => sim.groundState?.lastReport?.sinkRateFpm ?? 0, 'ft/min'),
+        actionItem('RESPAWN ON CONFIGURED RUNWAY', () => sim.resetConfiguredFlight(),
+          'Apply the configured start airport and runway end immediately.')
+      ]
+    });
+
+    categories.push({
+      id: 'persistence',
+      label: 'PERSISTENCE',
+      description: 'Automatic restore, named presets, portable JSON and landing history.',
+      items: [
+        heading('AUTOMATIC RESTORE'),
+        boolItem('Autosave settings', () => persistence?.autoSave ?? false, value => {
+          if (!persistence) return;
+          persistence.autoSave = value;
+          persistence.saveAutosave(sim, { force: true });
+        }),
+        readonlyItem('Storage status', () => persistence?.lastError || 'OK'),
+        actionItem('SAVE AUTOSAVE NOW', () => {
+          if (!persistence?.saveAutosave(sim, { force: true })) throw new Error(persistence?.lastError || 'Save failed');
+          this.setStatus('AUTOSAVE WRITTEN');
+        }),
+        actionItem('CLEAR AUTOSAVE', () => {
+          persistence.autoSave = false;
+          if (!persistence?.clearAutosave()) throw new Error(persistence?.lastError || 'Clear failed');
+          this.setStatus('AUTOSAVE CLEARED + DISABLED — CURRENT SESSION UNCHANGED');
+        }),
+        heading('NAMED PRESETS'),
+        textItem('Preset name', () => persistence?.profileName ?? '', value => {
+          if (persistence) persistence.profileName = value.slice(0, 48);
+        }),
+        readonlyItem('Saved preset count', () => presetNames.length),
+        readonlyItem('Saved preset names', () => presetNames.join(', ') || 'NONE'),
+        actionItem('SAVE NAMED PRESET', () => {
+          const name = sim.saveNamedPreset();
+          this.setStatus(`PRESET SAVED: ${name}`);
+        }),
+        actionItem('LOAD NAMED PRESET', () => {
+          const name = sim.loadNamedPreset();
+          this.setStatus(`PRESET LOADED: ${name}`);
+        }),
+        actionItem('DELETE NAMED PRESET', () => {
+          if (!sim.deleteNamedPreset()) throw new Error('Preset not found');
+          this.setStatus('PRESET DELETED');
+        }),
+        heading('PORTABLE CONFIGURATION'),
+        actionItem('EXPORT JSON FILE', () => {
+          sim.exportConfiguration();
+          this.setStatus('CONFIGURATION EXPORTED');
+        }),
+        actionItem('IMPORT JSON FILE', async () => {
+          await sim.importConfiguration();
+          this.setStatus('CONFIGURATION IMPORTED');
+        }),
+        heading('LANDING HISTORY'),
+        readonlyItem('Recorded landings', () => landingHistory.length),
+        readonlyItem('Last result', () => lastLanding
+          ? `${lastLanding.quality} ${lastLanding.score}/100 ${lastLanding.sinkRateFpm}fpm`
+          : 'NONE'),
+        actionItem('CLEAR LANDING HISTORY', () => {
+          if (!persistence?.clearLandingHistory()) throw new Error(persistence?.lastError || 'Clear failed');
+          this.setStatus('LANDING HISTORY CLEARED');
+        })
+      ]
+    });
+
+    categories.push({
       id: 'display',
       label: 'DISPLAY',
       description: 'Chart transform, overlays, vector scaling and instrument layout.',
@@ -469,6 +593,9 @@ export class ConfigurationPanel {
         numberItem('OBS course', () => sim.vorNav?.obs ?? 0,
           value => sim.vorNav?.setOBS(value),
           { step: 1, min: 0, max: 359, unit: 'deg' }),
+        numericProperty(CONFIG, 'MORSE_VOLUME', 'Morse identifier volume', {
+          step: 0.01, min: 0, max: 1, precision: 2
+        }),
         heading('AIRPORT DIRECT-TO'),
         enumItem('Selected airport', () => sim.airportNav?.selectedAirport?.id ?? 'NONE', value => {
           if (!sim.airportNav) return;
@@ -680,7 +807,14 @@ export class ConfigurationPanel {
     if (!item) return;
     if (item.type === 'action') {
       try {
-        item.run();
+        const result = item.run();
+        if (result && typeof result.then === 'function') {
+          result.then(() => {
+            this.refreshDiagnostics();
+            if (this.statusUntil < performance.now()) this.setStatus('ACTION COMPLETE');
+          }).catch(error => this.setStatus(`ACTION FAILED: ${error.message}`));
+          return;
+        }
         this.refreshDiagnostics();
         if (this.statusUntil < performance.now()) this.setStatus('ACTION COMPLETE');
       } catch (error) {
@@ -729,7 +863,11 @@ export class ConfigurationPanel {
     if (item.type === 'action') return '[ ENTER ]';
     if (item.type === 'boolean') return item.get() ? 'ON' : 'OFF';
     if (item.type === 'enum' || item.type === 'text') return String(item.get());
-    const value = Number(item.get());
+    const rawValue = item.get();
+    if (item.type === 'readonly' && typeof rawValue !== 'number') {
+      return String(rawValue);
+    }
+    const value = Number(rawValue);
     const formatted = Number.isFinite(value)
       ? value.toLocaleString('en-US', {
         minimumFractionDigits: item.precision ?? 0,

@@ -15,6 +15,8 @@
 import { AircraftState, AircraftSpecs, Controls } from './core/aircraft.js';
 import { PhysicsEngine } from './core/physics.js';
 import { calculateLevelFlightTrim } from './core/trim.js';
+import { GroundSystem } from './core/ground.js';
+import { PersistenceManager } from './core/persistence.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
@@ -35,10 +37,13 @@ class FlightSimulator {
   constructor() {
     this.canvas = document.getElementById('chart');
     this.resizeCanvas();
+    this.config = CONFIG;
 
-    // Load chart features
+    // World data is loaded after all dependent systems are ready.
     this.chartFeatures = null;
-    this.loadChartFeatures();
+    this.worldReady = false;
+    this.ground = null;
+    this.groundState = null;
 
     // Initialize systems
     this.state = new AircraftState();
@@ -98,6 +103,13 @@ class FlightSimulator {
     // Full runtime configuration console
     this.configPanel = new ConfigurationPanel(this);
 
+    // Restore durable tuning and display preferences before world initialization.
+    this.persistence = new PersistenceManager();
+    this.persistedSnapshot = this.persistence.loadAutosave();
+    if (this.persistedSnapshot) {
+      this.persistence.apply(this, this.persistedSnapshot, { features: false });
+    }
+
     // Hold the calculated elevator trim when the pitch control is released.
     this.input.elevatorTrim = initialTrim.elevator;
 
@@ -123,6 +135,9 @@ class FlightSimulator {
     // Display controls
     this.showControls();
 
+    // Load airports/runways, apply persisted edits, then place the aircraft.
+    this.loadChartFeatures();
+
     console.log('Starting game loop...');
     requestAnimationFrame(() => this.gameLoop());
 
@@ -141,24 +156,29 @@ class FlightSimulator {
       this.chartFeatures = await response.json();
       console.log('Chart features loaded:', this.chartFeatures);
 
-      // Initialize VOR navigation after features are loaded
-      this.vorNav = new VORNavigation(this.chartFeatures);
-
-      // Initialize Airport navigation
-      this.airportNav = new AirportNavigation(this.chartFeatures);
-
-      // Set VOR navigation on input handler if it exists
-      if (this.input) {
-        this.input.setVORNavigation(this.vorNav);
+      if (this.persistedSnapshot) {
+        this.persistence.apply(this, this.persistedSnapshot, { features: true });
       }
-
-      // Auto-tune to first VOR for demo
-      if (this.chartFeatures.vors && this.chartFeatures.vors.length > 0) {
-        this.vorNav.selectVOR(this.chartFeatures.vors[0].id);
-        this.vorNav.setOBS(0); // Start with 0° course
-      }
+      this.rebuildWorldSystems();
+      this.resetConfiguredFlight();
+      this.worldReady = true;
     } catch (error) {
       console.warn('Could not load chart features:', error);
+      this.worldReady = true;
+    }
+  }
+
+  rebuildWorldSystems() {
+    if (!this.chartFeatures) return;
+    this.vorNav = new VORNavigation(this.chartFeatures);
+    this.airportNav = new AirportNavigation(this.chartFeatures);
+    this.ground = new GroundSystem(this.chartFeatures, this.specs, CONFIG);
+    this.physics.setGroundSystem(this.ground);
+    this.input.setVORNavigation(this.vorNav);
+
+    if (this.chartFeatures.vors?.length) {
+      this.vorNav.selectVOR(this.chartFeatures.vors[0].id);
+      this.vorNav.setOBS(0);
     }
   }
 
@@ -176,6 +196,7 @@ class FlightSimulator {
     console.log('  Arrow Left/Right: Roll (bank left/right)');
     console.log('  A/D: Rudder (yaw left/right)');
     console.log('  W/S: Throttle up/down');
+    console.log('  B: Hold wheel brakes');
     console.log('  PageUp/PageDown: Elevator TRIM (holds pitch)');
     console.log('  Home: Reset trim to zero');
     console.log('');
@@ -189,7 +210,9 @@ class FlightSimulator {
     console.log('  1/2/3/4: Zoom presets (1x, 3x, 5x, 10x)');
     console.log('');
     console.log('AIRCRAFT: Cessna 172 Skyhawk');
-    console.log(`  Starting: ${CONFIG.INITIAL_ALTITUDE}ft MSL, ${CONFIG.INITIAL_SPEED}kt IAS, trimmed for cruise`);
+    console.log(CONFIG.INITIAL_START_MODE === 'runway'
+      ? `  Starting: ${CONFIG.INITIAL_AIRPORT} runway ${CONFIG.INITIAL_RUNWAY_END}`
+      : `  Starting: ${CONFIG.INITIAL_ALTITUDE}ft MSL, ${CONFIG.INITIAL_SPEED}kt IAS, trimmed for cruise`);
     console.log(`  Wind: ${CONFIG.INITIAL_WIND_DIRECTION}° @ ${CONFIG.INITIAL_WIND_SPEED}kt base (DYNAMIC - varies ±20°, ±5kt)`);
     console.log('  Navigation: ABC VOR auto-tuned');
     console.log('  Timer: Flight time displayed bottom-right');
@@ -236,9 +259,10 @@ class FlightSimulator {
 
     // Always process input (even when paused, for pause/help keys)
     this.input.update(frameTime);
+    if (this.worldReady) this.persistence.update(this, frameTime);
 
     // Update physics with fixed timestep (skip if paused)
-    if (!this.paused) {
+    if (!this.paused && this.worldReady) {
       while (this.accumulator >= this.dt) {
         const substepDt = this.dt / this.physicsSubsteps;
         for (let i = 0; i < this.physicsSubsteps; i++) {
@@ -248,6 +272,8 @@ class FlightSimulator {
           }
 
           this.lastForces = this.physics.update(substepDt);
+          this.groundState = this.physics.lastGroundState ?? this.groundState;
+          this.handleGroundEvent(this.groundState?.event);
         }
 
         // Update energy diagram
@@ -334,7 +360,8 @@ class FlightSimulator {
 
     for (let step = 0; step < steps; step++) {
       this.input.update(this.dt);
-      if (this.paused) continue;
+      if (this.worldReady) this.persistence.update(this, this.dt);
+      if (this.paused || !this.worldReady) continue;
 
       const substepDt = this.dt / this.physicsSubsteps;
       for (let i = 0; i < this.physicsSubsteps; i++) {
@@ -342,6 +369,8 @@ class FlightSimulator {
           this.wind.updateDynamic(substepDt);
         }
         this.lastForces = this.physics.update(substepDt);
+        this.groundState = this.physics.lastGroundState ?? this.groundState;
+        this.handleGroundEvent(this.groundState?.event);
       }
 
       this.energyDiagram.update(this.state, this.dt);
@@ -370,6 +399,7 @@ class FlightSimulator {
     this.controls.aileron = 0;
     this.controls.rudder = 0;
     this.controls.throttle = trim.throttle;
+    this.controls.brake = 0;
     this.input.elevatorTrim = trim.elevator;
     this.initialTrim = trim;
     this.lastForces = null;
@@ -377,6 +407,33 @@ class FlightSimulator {
   }
 
   resetConfiguredFlight() {
+    this.wind.time = 0;
+    this.wind.setBaseWind(CONFIG.INITIAL_WIND_DIRECTION, CONFIG.INITIAL_WIND_SPEED);
+    this.flightTime = 0;
+    this.lastForces = null;
+    this.lastGroundEventSequence = null;
+
+    if (CONFIG.INITIAL_START_MODE === 'runway' && this.ground) {
+      const spawn = this.ground.spawnOnRunway(
+        this.state,
+        this.controls,
+        {
+          north: this.wind.windNorth,
+          east: this.wind.windEast,
+          down: this.wind.windDown
+        },
+        CONFIG.INITIAL_AIRPORT,
+        CONFIG.INITIAL_RUNWAY_END
+      );
+      if (spawn) {
+        this.input.elevatorTrim = 0;
+        this.initialTrim = null;
+        this.groundState = this.ground.getStatus(this.state, this.controls);
+        this.chart.setCenter(this.state.position.lat, this.state.position.lon);
+        return spawn;
+      }
+    }
+
     this.state.position.lat = 0;
     this.state.position.lon = 0;
     this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
@@ -400,14 +457,55 @@ class FlightSimulator {
     this.controls.aileron = 0;
     this.controls.rudder = 0;
     this.controls.throttle = trim.throttle;
+    this.controls.brake = 0;
     this.input.elevatorTrim = trim.elevator;
-    this.wind.time = 0;
-    this.wind.setBaseWind(CONFIG.INITIAL_WIND_DIRECTION, CONFIG.INITIAL_WIND_SPEED);
-    this.flightTime = 0;
     this.initialTrim = trim;
-    this.lastForces = null;
+    this.ground?.reset({ contact: false });
+    this.groundState = this.ground?.getStatus(this.state, this.controls) ?? null;
     this.chart.setCenter(0, 0);
     return trim;
+  }
+
+  handleGroundEvent(event) {
+    if (!event || event.sequence === this.lastGroundEventSequence) return;
+    this.lastGroundEventSequence = event.sequence;
+    if ((event.type === 'touchdown' || event.type === 'crash') && event.report) {
+      this.persistence.recordLanding(event.report, this.flightTime);
+      this.persistence.saveAutosave(this, { force: true });
+    }
+  }
+
+  applySnapshot(snapshot) {
+    if (!this.persistence.apply(this, snapshot, { features: true })) {
+      throw new Error('Unsupported snapshot');
+    }
+    this.rebuildWorldSystems();
+    this.resetConfiguredFlight();
+    this.persistence.saveAutosave(this, { force: true });
+  }
+
+  saveNamedPreset() {
+    return this.persistence.savePreset(this.persistence.profileName, this);
+  }
+
+  loadNamedPreset() {
+    const snapshot = this.persistence.loadPreset(this.persistence.profileName);
+    this.applySnapshot(snapshot);
+    return this.persistence.profileName;
+  }
+
+  deleteNamedPreset() {
+    return this.persistence.deletePreset(this.persistence.profileName);
+  }
+
+  exportConfiguration() {
+    return this.persistence.download(this);
+  }
+
+  async importConfiguration() {
+    const snapshot = await this.persistence.requestImport();
+    this.applySnapshot(snapshot);
+    return true;
   }
 
   renderGameToText() {
@@ -459,6 +557,7 @@ class FlightSimulator {
         aileron: round(this.controls.aileron),
         rudder: round(this.controls.rudder),
         throttle: round(this.controls.throttle),
+        brake: round(this.controls.brake),
         elevatorTrim: round(this.input.elevatorTrim)
       },
       wind: {
@@ -469,6 +568,26 @@ class FlightSimulator {
         selectedVor: this.vorNav?.selectedVOR?.id ?? null,
         obsDeg: this.vorNav?.obs ?? null,
         selectedAirport: this.airportNav?.selectedAirport?.id ?? null
+      },
+      ground: this.groundState ? {
+        phase: this.groundState.phase,
+        contact: this.groundState.contact,
+        crashed: this.groundState.crashed,
+        airportId: this.groundState.airportId,
+        runwayId: this.groundState.runwayId,
+        surfaceType: this.groundState.surfaceType,
+        onRunway: this.groundState.onRunway,
+        aglFt: round(this.groundState.aglFt, 1),
+        groundSpeedKt: round(this.groundState.groundSpeedKt, 1),
+        brake: round(this.groundState.brake),
+        message: this.groundState.message,
+        lastLanding: this.groundState.lastReport
+      } : null,
+      persistence: {
+        autoSave: this.persistence.autoSave,
+        profileName: this.persistence.profileName,
+        presetCount: this.persistence.getPresetNames().length,
+        landingCount: this.persistence.getLandingHistory().length
       },
       forcesNewtons: components ? {
         lift: round(components.lift, 1),
@@ -605,6 +724,9 @@ class FlightSimulator {
     // Keep commanded engine power visible beside the screen-center aircraft.
     this.instruments.drawThrottleIndicator(this.controls.throttle);
 
+    // Runway contact, braking, and landing evaluation status.
+    this.instruments.drawGroundStatus(this.groundState);
+
     // Draw vector mode indicator (bottom-left)
     this.vectors.drawVectorModeIndicator();
 
@@ -723,6 +845,7 @@ class FlightSimulator {
       '←/→ Arrow Keys         Roll (bank left/right)',
       'A / D                  Rudder (yaw left/right)',
       'W / S                  Throttle up/down',
+      'B                      Hold wheel brakes',
       'PageUp / PageDown      Elevator TRIM (crucial for hands-off flight)',
       'Home                   Reset trim to zero',
     ];
@@ -931,6 +1054,7 @@ class FlightSimulator {
 // Start simulation when page loads
 window.addEventListener('DOMContentLoaded', () => {
   const simulator = new FlightSimulator();
+  window.flightSimulator = simulator;
   window.render_game_to_text = () => simulator.renderGameToText();
   window.advanceTime = milliseconds => simulator.advanceTime(milliseconds);
 });

@@ -68,4 +68,9 @@ test('every chart theme provides the complete render palette', () => {
 
   assert.equal(CHART_THEMES['black-white'].background, '#FFFFFF');
   assert.equal(CHART_THEMES['black-white'].foreground, '#000000');
+  assert.equal(CHART_THEMES['black-white'].vectorLiftNominal, '#0072B2');
+  assert.equal(CHART_THEMES['black-white'].vectorThrust, '#009E73');
+  assert.equal(CHART_THEMES['black-white'].vectorDrag, '#D55E00');
+  assert.equal(CHART_THEMES['black-white'].vectorSide, '#A23BAA');
+  assert.equal(CHART_THEMES['black-white'].vectorGroundTrack, '#E06C00');
 });
