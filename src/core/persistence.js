@@ -7,6 +7,7 @@ const VERSION = 1;
 const INPUT_KEYS = [
   'pitchRate', 'rollRate', 'rudderRate', 'throttleRate', 'trimRate',
   'elevatorReturnRate', 'aileronReturnRate', 'rudderReturnRate',
+  'elevatorAirborneReturnRate',
   'trimMin', 'trimMax', 'elevatorTrim'
 ];
 

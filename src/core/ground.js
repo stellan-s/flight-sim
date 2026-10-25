@@ -136,6 +136,7 @@ export class GroundSystem {
     controls.rudder = 0;
     controls.throttle = 0;
     controls.brake = 0;
+    controls.flaps = 0;
 
     this.reset({ contact: true });
     this.lastGroundVelocity = { north: 0, east: 0, down: 0 };

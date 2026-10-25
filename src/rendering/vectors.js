@@ -370,6 +370,9 @@ export class VectorRenderer {
 
       data.push(`LIFT: ${Math.round(lift)} N (${liftRatio}%)`);
       data.push(`Cl: ${Cl.toFixed(3)} @ α=${alpha.toFixed(1)}°`);
+      if (forces.aerodynamic.groundEffect > 0.01) {
+        data.push(`GROUND EFFECT: ${Math.round(forces.aerodynamic.groundEffect * 100)}%`);
+      }
       data.push(`SIDE: ${Math.round(forces.components.side)} N`);
       if (forces.moments) {
         data.push(`MOM: L${Math.round(forces.moments.L)} M${Math.round(forces.moments.M)} N${Math.round(forces.moments.N)} N·m`);
@@ -381,6 +384,9 @@ export class VectorRenderer {
     data.push(`ELEV: ${(controls.elevator * 100).toFixed(0)}%`);
     data.push(`TRIM: ${(input.getTrimDisplay() * 100).toFixed(0)}%`);
     data.push(`THRO: ${(controls.throttle * 100).toFixed(0)}%`);
+    data.push(`FLAP: ${Math.round(
+      forces?.aerodynamic?.flapAngleDeg ?? (controls.flaps ?? 0) * 30
+    )}°`);
 
     data.forEach((line, i) => {
       ctx.fillText(line, startX, startY + i * lineHeight);

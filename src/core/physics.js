@@ -48,6 +48,19 @@ export class PhysicsEngine {
     this.groundSystem = groundSystem;
   }
 
+  getEnvironment(state) {
+    if (!this.groundSystem) return { aglFt: Infinity };
+    const surface = this.groundSystem.getSurface(
+      state.position.lat,
+      state.position.lon
+    );
+    return {
+      aglFt: state.position.altitude - surface.elevationFt,
+      surfaceType: surface.surfaceType,
+      onRunway: surface.onRunway
+    };
+  }
+
   // Update wind transformation before physics step
   updateWind() {
     if (!this.windModel) {
@@ -74,7 +87,13 @@ export class PhysicsEngine {
   // Compute derivatives of state vector
   computeDerivatives(state, controls) {
     // Calculate forces (state velocities are already air-relative)
-    const forces = calculateAerodynamicForces(state, this.specs, controls);
+    const forces = calculateAerodynamicForces(
+      state,
+      this.specs,
+      controls,
+      { u: 0, v: 0, w: 0 },
+      this.getEnvironment(state)
+    );
     const moments = calculateMoments(state, this.specs, controls, forces);
 
     const m = this.specs.mass;
@@ -255,7 +274,9 @@ export class PhysicsEngine {
     const finalForces = calculateAerodynamicForces(
       this.state,
       this.specs,
-      this.controls
+      this.controls,
+      { u: 0, v: 0, w: 0 },
+      this.getEnvironment(this.state)
     );
     const finalMoments = calculateMoments(
       this.state,

@@ -123,6 +123,26 @@ export class AircraftSpecs {
         K: 0.054,                // Induced drag factor
         stallAlpha: 0.262,       // rad (~15 degrees)
         stallDecay: 0.5,         // Post-stall lift decay
+        stallWarningAlpha: 0.209, // rad (~12 degrees)
+        stallFullAlpha: 0.349,    // rad (~20 degrees)
+        stallBuffetRollAccel: 0.65,
+        stallBuffetPitchAccel: 0.24,
+        stallWingDropAccel: 1.0,
+        stallYawAccel: 0.45,
+        spinEntryDelay: 0.8,
+        spinRollRate: 1.25,
+        spinYawRate: 0.65,
+        spinPitchRate: -0.18,
+        spinRecoveryTime: 0.65,
+
+        // High-lift devices and near-ground aerodynamics
+        flapMaxDeg: 30,
+        flapClIncrement: 0.55,
+        flapCdIncrement: 0.09,
+        flapCmIncrement: -0.08,
+        groundEffectHeightSpan: 1.0,
+        groundEffectLiftBoost: 0.08,
+        groundEffectInducedDragReduction: 0.45,
 
         // Stability derivatives (longitudinal)
         Cm0: 0.02,               // Pitching moment coefficient at α=0
@@ -172,10 +192,15 @@ export class AircraftSpecs {
         groundAltitude: 0,       // ft MSL
         earthRadius: 6371000,    // m
 
-        // Limits (for reference, not enforced)
+        // Flight-envelope and structural limits
         Vne: 163,                // Never exceed speed (knots)
         Vso: 47,                 // Stall speed landing config (knots)
-        Vs: 55                   // Stall speed clean (knots)
+        Vs: 55,                  // Stall speed clean (knots)
+        positiveGLimit: 3.8,
+        negativeGLimit: -1.52,
+        structuralDamageRate: 0.22,
+        overspeedDamageRate: 0.18,
+        structuralFailureRollAccel: 1.8
       }
     };
 
@@ -192,5 +217,6 @@ export class Controls {
     this.rudder = 0;      // Yaw control (-1=left, +1=right)
     this.throttle = 0.7;  // Throttle (0=idle, 1=full)
     this.brake = 0;       // Wheel brakes (0=released, 1=full)
+    this.flaps = 0;       // Flap extension (0=retracted, 1=full)
   }
 }

@@ -243,6 +243,9 @@ export class ConfigurationPanel {
         numericProperty(controls, 'aileron', 'Aileron command', { step: 0.01, min: -1, max: 1, precision: 2 }),
         numericProperty(controls, 'rudder', 'Rudder command', { step: 0.01, min: -1, max: 1, precision: 2 }),
         numericProperty(controls, 'throttle', 'Throttle', { step: 0.01, min: 0, max: 1, precision: 2 }),
+        numberItem('Flaps', () => controls.flaps * specs.flapMaxDeg,
+          value => { controls.flaps = clamp(value / Math.max(1, specs.flapMaxDeg), 0, 1); },
+          { step: 10, min: 0, max: specs.flapMaxDeg, unit: 'deg' }),
         numericProperty(input, 'elevatorTrim', 'Elevator trim', { step: 0.005, min: -1, max: 1, precision: 3 }),
         heading('DERIVED — READ ONLY'),
         readonlyItem('Indicated airspeed', () => state.getIAS(), 'kt'),
@@ -324,6 +327,14 @@ export class ConfigurationPanel {
           value => { specs.stallAlpha = value * DEG_TO_RAD; },
           { step: 0.5, min: -90, max: 90, precision: 1, unit: 'deg' }),
         numericProperty(specs, 'stallDecay', 'Post-stall lift decay', { step: 0.05, min: 0, max: 20, precision: 2 }),
+        heading('FLAPS / GROUND EFFECT'),
+        numericProperty(specs, 'flapMaxDeg', 'Maximum flap angle', { step: 5, min: 0, max: 90, unit: 'deg' }),
+        numericProperty(specs, 'flapClIncrement', 'Full-flap lift increment', { step: 0.05, min: -5, max: 10, precision: 2 }),
+        numericProperty(specs, 'flapCdIncrement', 'Full-flap drag increment', { step: 0.01, min: 0, max: 5, precision: 2 }),
+        numericProperty(specs, 'flapCmIncrement', 'Full-flap pitch increment', { step: 0.01, min: -5, max: 5, precision: 2 }),
+        numericProperty(specs, 'groundEffectHeightSpan', 'Ground-effect height', { step: 0.1, min: 0, max: 10, precision: 1, unit: 'span' }),
+        numericProperty(specs, 'groundEffectLiftBoost', 'Ground-effect lift boost', { step: 0.01, min: 0, max: 2, precision: 2 }),
+        numericProperty(specs, 'groundEffectInducedDragReduction', 'Ground-effect drag reduction', { step: 0.05, min: 0, max: 1, precision: 2 }),
         heading('PITCH STABILITY'),
         numericProperty(specs, 'Cm0', 'Pitch coefficient Cm0', { step: 0.01, min: -10, max: 10, precision: 3 }),
         numericProperty(specs, 'Cm_alpha', 'Pitch stiffness Cm_alpha', { step: 0.01, min: -50, max: 50, precision: 2, unit: '/rad' }),
@@ -367,6 +378,7 @@ export class ConfigurationPanel {
         numericProperty(input, 'trimRate', 'Trim input rate', { step: 0.01, min: 0, max: 5, precision: 2, unit: '/s' }),
         heading('CONTROL CENTERING'),
         numericProperty(input, 'elevatorReturnRate', 'Elevator return rate', { step: 0.1, min: 0, max: 100, precision: 1, unit: '/s' }),
+        numericProperty(input, 'elevatorAirborneReturnRate', 'Airborne elevator return', { step: 0.1, min: 0, max: 100, precision: 1, unit: '/s' }),
         numericProperty(input, 'aileronReturnRate', 'Aileron return rate', { step: 0.1, min: 0, max: 100, precision: 1, unit: '/s' }),
         numericProperty(input, 'rudderReturnRate', 'Rudder return rate', { step: 0.1, min: 0, max: 100, precision: 1, unit: '/s' }),
         numericProperty(input, 'trimMin', 'Minimum trim command', { step: 0.05, min: -1, max: 1, precision: 2 }),
@@ -453,6 +465,49 @@ export class ConfigurationPanel {
         readonlyItem('Sink rate', () => sim.groundState?.lastReport?.sinkRateFpm ?? 0, 'ft/min'),
         actionItem('RESPAWN ON CONFIGURED RUNWAY', () => sim.resetConfiguredFlight(),
           'Apply the configured start airport and runway end immediately.')
+      ]
+    });
+
+    categories.push({
+      id: 'envelope',
+      label: 'ENVELOPE',
+      description: 'Stall, spin, load limits, structural damage and recovery behavior.',
+      items: [
+        heading('LIVE FLIGHT ENVELOPE'),
+        readonlyItem('Phase', () => sim.envelopeState?.phase ?? 'normal'),
+        readonlyItem('Angle of attack', () => sim.envelopeState?.alphaDeg ?? 0, 'deg'),
+        readonlyItem('Stall margin', () => sim.envelopeState?.stallMarginDeg ?? 0, 'deg'),
+        readonlyItem('Stall severity', () => (sim.envelopeState?.stallSeverity ?? 0) * 100, '%'),
+        readonlyItem('Load factor', () => sim.envelopeState?.loadFactorG ?? 0, 'G'),
+        readonlyItem('Structural damage', () => (sim.envelopeState?.structuralDamage ?? 0) * 100, '%'),
+        readonlyItem('Ground effect', () => (sim.envelopeState?.groundEffect ?? 0) * 100, '%'),
+        heading('STALL / BUFFET'),
+        numberItem('Warning angle', () => specs.stallWarningAlpha * RAD_TO_DEG,
+          value => { specs.stallWarningAlpha = value * DEG_TO_RAD; },
+          { step: 0.5, min: 0, max: 90, precision: 1, unit: 'deg' }),
+        numberItem('Fully developed angle', () => specs.stallFullAlpha * RAD_TO_DEG,
+          value => { specs.stallFullAlpha = value * DEG_TO_RAD; },
+          { step: 0.5, min: 0, max: 90, precision: 1, unit: 'deg' }),
+        numericProperty(specs, 'stallBuffetRollAccel', 'Buffet roll acceleration', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s2' }),
+        numericProperty(specs, 'stallBuffetPitchAccel', 'Buffet pitch acceleration', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s2' }),
+        numericProperty(specs, 'stallWingDropAccel', 'Wing-drop acceleration', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s2' }),
+        numericProperty(specs, 'stallYawAccel', 'Stall yaw acceleration', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s2' }),
+        heading('SPIN / RECOVERY'),
+        numericProperty(specs, 'spinEntryDelay', 'Spin entry delay', { step: 0.1, min: 0, max: 30, precision: 1, unit: 's' }),
+        numericProperty(specs, 'spinRollRate', 'Developed spin roll rate', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s' }),
+        numericProperty(specs, 'spinYawRate', 'Developed spin yaw rate', { step: 0.05, min: 0, max: 20, precision: 2, unit: 'rad/s' }),
+        numericProperty(specs, 'spinPitchRate', 'Developed spin pitch rate', { step: 0.05, min: -20, max: 20, precision: 2, unit: 'rad/s' }),
+        numericProperty(specs, 'spinRecoveryTime', 'Recovery input time', { step: 0.05, min: 0.05, max: 30, precision: 2, unit: 's' }),
+        heading('STRUCTURAL LIMITS'),
+        numericProperty(specs, 'positiveGLimit', 'Positive G limit', { step: 0.1, min: 0, max: 20, precision: 1, unit: 'G' }),
+        numericProperty(specs, 'negativeGLimit', 'Negative G limit', { step: 0.1, min: -20, max: 0, precision: 1, unit: 'G' }),
+        numericProperty(specs, 'structuralDamageRate', 'G damage rate', { step: 0.01, min: 0, max: 10, precision: 2, unit: '/s' }),
+        numericProperty(specs, 'overspeedDamageRate', 'Overspeed damage rate', { step: 0.01, min: 0, max: 10, precision: 2, unit: '/s' }),
+        numericProperty(specs, 'structuralFailureRollAccel', 'Failure roll acceleration', { step: 0.1, min: 0, max: 50, precision: 1, unit: 'rad/s2' }),
+        actionItem('RESET ENVELOPE + DAMAGE', () => {
+          sim.envelopeState = sim.envelope.reset();
+          this.setStatus('FLIGHT ENVELOPE RESET');
+        }, 'Clear accumulated damage and transient stall or spin state.')
       ]
     });
 

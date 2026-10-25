@@ -49,7 +49,13 @@ export function calculateTrueAirspeedForIAS(iasKnots, altitudeFt) {
 
 // State velocities are AIR-RELATIVE in body frame (steady wind handled in kinematics)
 // windGust parameter reserved for turbulence/gusts (not currently used)
-export function calculateAerodynamicForces(state, specs, controls, windGust = { u: 0, v: 0, w: 0 }) {
+export function calculateAerodynamicForces(
+  state,
+  specs,
+  controls,
+  windGust = { u: 0, v: 0, w: 0 },
+  environment = {}
+) {
   const altitude = state.position.altitude;
   const rho = getAirDensity(altitude);
 
@@ -82,6 +88,13 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
   const elevator_rad = controls.elevator * ((specs.elevatorMaxDeg ?? 25) * Math.PI / 180);
   const aileron_rad = controls.aileron * ((specs.aileronMaxDeg ?? 20) * Math.PI / 180);
   const rudder_rad = controls.rudder * ((specs.rudderMaxDeg ?? 30) * Math.PI / 180);
+  const flaps = Math.max(0, Math.min(1, controls.flaps ?? 0));
+  const wingspanFt = specs.wingspan / 0.3048;
+  const effectHeightFt = wingspanFt * (specs.groundEffectHeightSpan ?? 1);
+  const aglFt = Number.isFinite(environment.aglFt) ? Math.max(0, environment.aglFt) : Infinity;
+  const groundEffect = effectHeightFt > 0
+    ? Math.pow(Math.max(0, 1 - aglFt / effectHeightFt), 2)
+    : 0;
 
   // === LIFT ===
   let Cl;
@@ -95,13 +108,22 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
     Cl = specs.Cl_max - k_stall * alpha_excess * alpha_excess;
   }
 
-  // Enforce physical limits
-  Cl = Math.max(-1.5, Math.min(Cl, specs.Cl_max));
+  Cl += flaps * (specs.flapClIncrement ?? 0);
 
-  const lift = q * specs.wingArea * Cl * (specs.liftMultiplier ?? 1);
+  // Enforce physical limits. Flaps raise the usable maximum lift coefficient.
+  const maximumCl = specs.Cl_max + flaps * (specs.flapClIncrement ?? 0);
+  Cl = Math.max(-1.5, Math.min(Cl, maximumCl));
+
+  const groundEffectLiftFactor = 1 +
+    groundEffect * (specs.groundEffectLiftBoost ?? 0);
+  const lift = q * specs.wingArea * Cl * groundEffectLiftFactor *
+    (specs.liftMultiplier ?? 1);
 
   // === DRAG ===
-  const Cd = specs.Cd0 + specs.K * Cl * Cl;
+  const inducedDragFactor = 1 - groundEffect *
+    (specs.groundEffectInducedDragReduction ?? 0);
+  const Cd = specs.Cd0 + specs.K * inducedDragFactor * Cl * Cl +
+    (specs.flapCdIncrement ?? 0) * flaps * flaps;
   const drag = q * specs.wingArea * Cd * (specs.dragMultiplier ?? 1);
 
   // === SIDE FORCE ===
@@ -164,7 +186,11 @@ export function calculateAerodynamicForces(state, specs, controls, windGust = { 
       Cy: Cy,
       q: q,
       lateralQ: lateralQ,
-      V: V
+      V: V,
+      flaps: flaps,
+      flapAngleDeg: flaps * (specs.flapMaxDeg ?? 30),
+      groundEffect: groundEffect,
+      aglFt: aglFt
     }
   };
 }
@@ -197,13 +223,15 @@ export function calculateMoments(state, specs, controls, forces) {
   const elevator_rad = controls.elevator * ((specs.elevatorMaxDeg ?? 25) * Math.PI / 180);
   const aileron_rad = controls.aileron * ((specs.aileronMaxDeg ?? 20) * Math.PI / 180);
   const rudder_rad = controls.rudder * ((specs.rudderMaxDeg ?? 30) * Math.PI / 180);
+  const flaps = Math.max(0, Math.min(1, controls.flaps ?? 0));
 
   // === PITCHING MOMENT (M) ===
   // Cm = Cm0 + Cm_alpha * α + Cm_q * q̂ + Cm_de * δe
   const Cm = specs.Cm0 +
              specs.Cm_alpha * alpha +
              specs.Cm_q * q_hat +
-             specs.Cm_de * elevator_rad;
+             specs.Cm_de * elevator_rad +
+             (specs.flapCmIncrement ?? 0) * flaps;
 
   const M_pitch = q_dyn * S * c * Cm * (specs.pitchMomentMultiplier ?? 1);
 

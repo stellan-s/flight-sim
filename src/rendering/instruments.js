@@ -220,4 +220,63 @@ export class InstrumentRenderer {
     }
     ctx.restore();
   }
+
+  drawEnvelopeStatus(status, controls, specs) {
+    if (!status) return;
+
+    const ctx = this.chart.ctx;
+    const palette = this.chart.palette;
+    const flapAngle = Math.round((controls.flaps ?? 0) * specs.flapMaxDeg);
+    const gText = `${status.loadFactorG >= 0 ? '+' : ''}${status.loadFactorG.toFixed(1)}G`;
+    const mainLine = `${status.phase.toUpperCase()} | ${gText} | AOA ${status.alphaDeg.toFixed(1)}° | FLAP ${flapAngle}°`;
+    let actionLine = '';
+
+    if (status.failed) {
+      actionLine = `${status.failureCause || 'STRUCTURAL FAILURE'} | DAMAGE 100%`;
+    } else if (status.spinning) {
+      const rudder = status.spinDirection > 0 ? 'LEFT' : 'RIGHT';
+      actionLine = `SPIN ${status.spinDirection > 0 ? 'RIGHT' : 'LEFT'} | PUSH + RUDDER ${rudder} | REC ${Math.round(status.recoveryProgress * 100)}%`;
+    } else if (status.recovering) {
+      actionLine = 'RECOVERING | REDUCE AOA + LEVEL THE WINGS';
+    } else if (status.warning) {
+      actionLine = `STALL MARGIN ${status.stallMarginDeg.toFixed(1)}° | LOWER THE NOSE`;
+    } else if (status.overspeed) {
+      actionLine = `VNE ${specs.Vne}KT | REDUCE SPEED`;
+    } else if (status.structuralDamage > 0) {
+      actionLine = `STRUCTURAL DAMAGE ${Math.round(status.structuralDamage * 100)}%`;
+    } else if (status.groundEffect > 0.01) {
+      actionLine = `GROUND EFFECT ${Math.round(status.groundEffect * 100)}%`;
+    }
+
+    const danger = status.failed || status.spinning || status.stalled;
+    const caution = status.warning || status.overspeed || status.structuralDamage > 0;
+    const color = danger
+      ? palette.danger
+      : caution ? palette.warning : palette.foreground;
+    const x = 20;
+    const y = 96;
+
+    ctx.save();
+    ctx.font = 'bold 10px "B612 Mono", monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const width = Math.max(
+      ctx.measureText(mainLine).width,
+      actionLine ? ctx.measureText(actionLine).width : 0
+    ) + 10;
+    const height = actionLine ? 31 : 16;
+    ctx.fillStyle = palette.panel;
+    ctx.fillRect(x - 5, y - 3, width, height);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(x - 5, y - 3, width, height);
+    ctx.fillStyle = color;
+    ctx.fillText(mainLine, x, y);
+
+    if (actionLine) {
+      ctx.fillStyle = danger ? palette.danger : palette.accent;
+      ctx.fillText(actionLine, x, y + 15);
+    }
+    ctx.restore();
+  }
 }

@@ -16,6 +16,7 @@ import { AircraftState, AircraftSpecs, Controls } from './core/aircraft.js';
 import { PhysicsEngine } from './core/physics.js';
 import { calculateLevelFlightTrim } from './core/trim.js';
 import { GroundSystem } from './core/ground.js';
+import { FlightEnvelopeSystem } from './core/flight-envelope.js';
 import { PersistenceManager } from './core/persistence.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
@@ -49,6 +50,8 @@ class FlightSimulator {
     this.state = new AircraftState();
     this.specs = new AircraftSpecs('cessna172');
     this.controls = new Controls();
+    this.envelope = new FlightEnvelopeSystem(this.specs);
+    this.envelopeState = this.envelope.status;
 
     // Set the configured initial flight condition.
     this.state.position.altitude = CONFIG.INITIAL_ALTITUDE;
@@ -197,6 +200,7 @@ class FlightSimulator {
     console.log('  A/D: Rudder (yaw left/right)');
     console.log('  W/S: Throttle up/down');
     console.log('  B: Hold wheel brakes');
+    console.log('  F: Cycle flaps 0/10/20/30°');
     console.log('  PageUp/PageDown: Elevator TRIM (holds pitch)');
     console.log('  Home: Reset trim to zero');
     console.log('');
@@ -273,6 +277,13 @@ class FlightSimulator {
 
           this.lastForces = this.physics.update(substepDt);
           this.groundState = this.physics.lastGroundState ?? this.groundState;
+          this.envelopeState = this.envelope.update(
+            substepDt,
+            this.state,
+            this.controls,
+            this.lastForces,
+            this.groundState
+          );
           this.handleGroundEvent(this.groundState?.event);
         }
 
@@ -303,6 +314,7 @@ class FlightSimulator {
         console.log('Aileron:', (this.controls.aileron * 100).toFixed(0), '%');
         console.log('Rudder:', (this.controls.rudder * 100).toFixed(0), '%');
         console.log('Throttle:', (this.controls.throttle * 100).toFixed(0), '%');
+        console.log('Flaps:', Math.round(this.controls.flaps * this.specs.flapMaxDeg), '°');
         if (this.lastForces) {
           const V_total = this.state.getVelocityMagnitude();
           const V_kts = Math.round(V_total * 1.94384);
@@ -370,6 +382,13 @@ class FlightSimulator {
         }
         this.lastForces = this.physics.update(substepDt);
         this.groundState = this.physics.lastGroundState ?? this.groundState;
+        this.envelopeState = this.envelope.update(
+          substepDt,
+          this.state,
+          this.controls,
+          this.lastForces,
+          this.groundState
+        );
         this.handleGroundEvent(this.groundState?.event);
       }
 
@@ -386,7 +405,12 @@ class FlightSimulator {
   retrimCurrentFlight() {
     const altitude = this.state.position.altitude;
     const indicatedAirspeed = Math.max(1, this.state.getIAS());
-    const trim = calculateLevelFlightTrim(this.specs, altitude, indicatedAirspeed);
+    const trim = calculateLevelFlightTrim(
+      this.specs,
+      altitude,
+      indicatedAirspeed,
+      { flaps: this.controls.flaps }
+    );
 
     this.state.velocity.u = trim.velocity.u;
     this.state.velocity.v = trim.velocity.v;
@@ -412,6 +436,7 @@ class FlightSimulator {
     this.flightTime = 0;
     this.lastForces = null;
     this.lastGroundEventSequence = null;
+    this.envelopeState = this.envelope.reset();
 
     if (CONFIG.INITIAL_START_MODE === 'runway' && this.ground) {
       const spawn = this.ground.spawnOnRunway(
@@ -458,6 +483,7 @@ class FlightSimulator {
     this.controls.rudder = 0;
     this.controls.throttle = trim.throttle;
     this.controls.brake = 0;
+    this.controls.flaps = 0;
     this.input.elevatorTrim = trim.elevator;
     this.initialTrim = trim;
     this.ground?.reset({ contact: false });
@@ -558,6 +584,8 @@ class FlightSimulator {
         rudder: round(this.controls.rudder),
         throttle: round(this.controls.throttle),
         brake: round(this.controls.brake),
+        flaps: round(this.controls.flaps),
+        flapsDeg: round(this.controls.flaps * this.specs.flapMaxDeg, 1),
         elevatorTrim: round(this.input.elevatorTrim)
       },
       wind: {
@@ -582,6 +610,24 @@ class FlightSimulator {
         brake: round(this.groundState.brake),
         message: this.groundState.message,
         lastLanding: this.groundState.lastReport
+      } : null,
+      envelope: this.envelopeState ? {
+        phase: this.envelopeState.phase,
+        warning: this.envelopeState.warning,
+        stalled: this.envelopeState.stalled,
+        spinning: this.envelopeState.spinning,
+        recovering: this.envelopeState.recovering,
+        failed: this.envelopeState.failed,
+        alphaDeg: round(this.envelopeState.alphaDeg, 1),
+        stallMarginDeg: round(this.envelopeState.stallMarginDeg, 1),
+        stallSeverity: round(this.envelopeState.stallSeverity),
+        spinDirection: this.envelopeState.spinDirection,
+        recoveryProgress: round(this.envelopeState.recoveryProgress),
+        loadFactorG: round(this.envelopeState.loadFactorG, 2),
+        overspeed: this.envelopeState.overspeed,
+        structuralDamage: round(this.envelopeState.structuralDamage),
+        failureCause: this.envelopeState.failureCause,
+        groundEffect: round(this.envelopeState.groundEffect)
       } : null,
       persistence: {
         autoSave: this.persistence.autoSave,
@@ -727,6 +773,13 @@ class FlightSimulator {
     // Runway contact, braking, and landing evaluation status.
     this.instruments.drawGroundStatus(this.groundState);
 
+    // Stall, spin, structural-load, flap, and ground-effect status.
+    this.instruments.drawEnvelopeStatus(
+      this.envelopeState,
+      this.controls,
+      this.specs
+    );
+
     // Draw vector mode indicator (bottom-left)
     this.vectors.drawVectorModeIndicator();
 
@@ -746,7 +799,7 @@ class FlightSimulator {
     this.input.drawCrosshair();
 
     // Draw pause indicator
-    if (this.paused) {
+    if (this.paused && !this.configPanel.isOpen) {
       this.drawPauseOverlay();
     }
 
@@ -846,6 +899,7 @@ class FlightSimulator {
       'A / D                  Rudder (yaw left/right)',
       'W / S                  Throttle up/down',
       'B                      Hold wheel brakes',
+      'F                      Cycle flaps 0/10/20/30°',
       'PageUp / PageDown      Elevator TRIM (crucial for hands-off flight)',
       'Home                   Reset trim to zero',
     ];

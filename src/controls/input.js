@@ -23,6 +23,7 @@ export class InputHandler {
     this.throttleRate = 0.3;   // per second
     this.trimRate = 0.05;      // trim units per second
     this.elevatorReturnRate = 1.5;
+    this.elevatorAirborneReturnRate = 4.0;
     this.aileronReturnRate = 4.0;
     this.rudderReturnRate = 4.0;
     this.trimMin = -0.3;
@@ -195,7 +196,10 @@ export class InputHandler {
     } else {
       // Return to trim position smoothly
       const diff = this.elevatorTrim - this.controls.elevator;
-      this.controls.elevator += diff * this.elevatorReturnRate * dt;
+      const returnRate = this.simulator?.groundState?.contact
+        ? this.elevatorReturnRate
+        : this.elevatorAirborneReturnRate;
+      this.controls.elevator += diff * returnRate * dt;
       if (Math.abs(diff) < 0.01) this.controls.elevator = this.elevatorTrim;
     }
 
@@ -307,6 +311,17 @@ export class InputHandler {
         this.simulator.helpScrollOffset = 999999; // Will be clamped in draw function
         this.keys['End'] = false;
       }
+    }
+
+    // Cycle 0/10/20/30 degree flap detents.
+    if (this.keys['f'] || this.keys['F']) {
+      const detents = [0, 1 / 3, 2 / 3, 1];
+      const currentIndex = detents.findIndex(value =>
+        Math.abs(value - (this.controls.flaps ?? 0)) < 0.05
+      );
+      this.controls.flaps = detents[(currentIndex + 1 + detents.length) % detents.length];
+      this.keys['f'] = false;
+      this.keys['F'] = false;
     }
 
     // Chart rotation mode (N/T keys) - works when paused

@@ -151,3 +151,38 @@ test('stationary crosswind produces lateral force without fake wing lift', () =>
   assert.equal(forces.components.lift, 0);
   assert.notEqual(forces.components.side, 0);
 });
+
+test('flaps add lift and drag plus a nose-down pitching moment', () => {
+  const state = new AircraftState();
+  state.velocity = { u: 35, v: 0, w: 2 };
+  const specs = new AircraftSpecs();
+  const controls = new Controls();
+  controls.flaps = 0;
+  const clean = calculateAerodynamicForces(state, specs, controls);
+  const cleanMoments = calculateMoments(state, specs, controls, clean);
+
+  controls.flaps = 1;
+  const extended = calculateAerodynamicForces(state, specs, controls);
+  const extendedMoments = calculateMoments(state, specs, controls, extended);
+
+  assert.ok(extended.components.lift > clean.components.lift);
+  assert.ok(extended.components.drag > clean.components.drag);
+  assert.ok(extendedMoments.M < cleanMoments.M);
+});
+
+test('ground effect increases lift and reduces induced drag near the surface', () => {
+  const state = new AircraftState();
+  state.velocity = { u: 35, v: 0, w: 2 };
+  const specs = new AircraftSpecs();
+  const controls = new Controls();
+  const high = calculateAerodynamicForces(
+    state, specs, controls, {}, { aglFt: 500 }
+  );
+  const low = calculateAerodynamicForces(
+    state, specs, controls, {}, { aglFt: 4 }
+  );
+
+  assert.ok(low.aerodynamic.groundEffect > 0.5);
+  assert.ok(low.components.lift > high.components.lift);
+  assert.ok(low.aerodynamic.Cd < high.aerodynamic.Cd);
+});

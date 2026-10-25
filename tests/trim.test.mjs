@@ -36,3 +36,14 @@ test('calculated initial trim balances forces and pitching moment', () => {
   assert.ok(trim.throttle > 0 && trim.throttle < 1);
   assert.ok(Math.abs(trim.elevator) < 1);
 });
+
+test('level-flight trim includes deployed flap lift, drag, and pitch effects', () => {
+  const specs = new AircraftSpecs();
+  const clean = calculateLevelFlightTrim(specs, 3000, 80);
+  const extended = calculateLevelFlightTrim(specs, 3000, 80, { flaps: 1 });
+
+  assert.ok(extended.alpha < clean.alpha);
+  assert.ok(extended.drag > clean.drag);
+  assert.notEqual(extended.elevator, clean.elevator);
+  assert.ok(extended.throttle > clean.throttle);
+});

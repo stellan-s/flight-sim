@@ -138,3 +138,30 @@ Implement all seven approved simulator improvements while preserving the existin
 - [x] Calculate a trimmed starting condition.
 - [x] Expand physics/navigation tests and add npm test tooling.
 - [x] Finish the web-game Playwright client and browser control pass.
+
+## Flight-envelope pass (2026-10-25)
+
+- Added four flap detents on F (0/10/20/30 degrees), including flap lift,
+  drag and pitch effects in physics and level-flight trim.
+- Added height-dependent ground effect using runway/terrain AGL: a small lift
+  increase and reduced induced drag within one wingspan of the surface.
+- Added deterministic stall warning, buffet, wing drop, developed spins, and a
+  recovery sequence requiring forward elevator plus opposite rudder.
+- Added positive/negative G limits, Vne overspeed tracking, accumulating
+  structural damage, and structural-failure roll behavior.
+- Added a compact theme-aware envelope HUD and a complete ASCII `ENVELOPE`
+  settings group for live state and all tuning parameters.
+- Removed the normal pause overlay while the configuration console is open so
+  the black-and-white ASCII screen remains clean and readable.
+- `render_game_to_text` now exposes flap, ground-effect, stall/spin, G-load,
+  overspeed, recovery, and structural-damage state.
+- Full check passes: 56 tests plus JavaScript syntax validation.
+- Browser QA verified F cycles 10/20/30/0, stall -> spin -> recovery -> normal,
+  the new HUD, and the ASCII envelope screen with no console or page errors.
+
+## Next suggestions
+
+- [ ] Add a full time-series flight replay; persistence currently stores
+  configuration, presets, and landing summaries only.
+- [ ] Add weather layers, turbulence, and cloud/visibility effects.
+- [ ] Add engine mixture, propeller, fuel, and failure management.
