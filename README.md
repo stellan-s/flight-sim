@@ -1,6 +1,25 @@
 # Flight Simulator
 
-A 6DOF (Six Degrees of Freedom) flight simulator featuring realistic physics, VOR navigation, and professional aviation chart rendering.
+A browser-based, six-degrees-of-freedom flight simulator where the physics are
+the graphics. Fly a Cessna 172 using only the forces, velocities, navigation
+geometry, and flight-state data acting on the aircraft—there is no conventional
+outside view.
+
+**[Fly the live simulator](https://stellan-flight-sim.netlify.app)**
+
+## Demo films
+
+Click a poster to open the full-resolution, silent MP4 demo.
+
+| Force vectors | Map themes |
+| --- | --- |
+| [![Force vectors visualized in the simulator](media/demos/force-vectors.jpg)](media/demos/force-vectors.mp4) | [![Solarized Dark and other map themes](media/demos/map-themes.jpg)](media/demos/map-themes.mp4) |
+| Lift, drag, thrust, weight, wind, velocity, and ground track become the aircraft's visual language. | The same flight rendered across black-and-white, Nord, GitHub, Solarized, Dracula, and other palettes. |
+
+| Flight envelope | Crosswind landing |
+| --- | --- |
+| [![A fast-forward stall and spin scenario](media/demos/flight-envelope.jpg)](media/demos/flight-envelope.mp4) | [![A crosswind landing on runway 18](media/demos/crosswind-landing.jpg)](media/demos/crosswind-landing.mp4) |
+| A compressed scenario moving from normal flight through overspeed, stall, spin, and recovery. | A scripted runway 18 approach in a fixed 270° at 18-knot crosswind, scored by the simulator. |
 
 ## Features
 
@@ -17,7 +36,9 @@ A 6DOF (Six Degrees of Freedom) flight simulator featuring realistic physics, VO
   - Morse code station identifiers with audio playback
 
 - **Aviation Chart Rendering**: Professional-style navigation charts
-  - Black and white Jeppesen-inspired design
+  - 14 live themes, with black and white as the default
+  - Paper, night, phosphor, amber, GitHub, Nord, Dracula, Solarized, Gruvbox,
+    Tokyo Night, and Catppuccin palettes
   - Airport symbols with runway diagrams
   - Traffic pattern visualization (left/right patterns)
   - Obstacle markers
@@ -49,12 +70,24 @@ A 6DOF (Six Degrees of Freedom) flight simulator featuring realistic physics, VO
   - State vector panel with pitch, AOA, roll
   - Flight timer and controls display
 
+- **Flight Envelope**: Stall, spin, damage, and recovery behavior
+  - Angle-of-attack-based stall warning with audible horn
+  - Progressive buffet, wing drop, autorotation, and spin entry
+  - Overspeed and structural-load tracking
+
+- **ASCII Interface**: Keyboard-first help and configuration screens
+  - Monospaced terminal layout using the active map theme
+  - Live editing of physics, aircraft, controls, wind, airports, runways, VORs,
+    obstacles, ground handling, persistence, and display settings
+
 ## Project Structure
 
 ```
 flight-sim/
 ├── index.html           # Main HTML file
 ├── README.md           # This file
+├── media/
+│   └── demos/                 # README posters and MP4 demo films
 ├── data/
 │   └── chart-features.json   # VORs, airports, obstacles
 └── src/
@@ -62,6 +95,7 @@ flight-sim/
     ├── config.js              # Configuration constants
     ├── core/                  # Physics simulation
     │   ├── aircraft.js        # Aircraft state and specs
+    │   ├── flight-envelope.js # Stall, spin, damage, and recovery state
     │   ├── physics.js         # 6DOF physics engine (RK4)
     │   ├── forces.js          # Aerodynamic calculations
     │   ├── ground.js          # Runway contact and landing evaluation
@@ -72,11 +106,17 @@ flight-sim/
     ├── controls/             # User input
     │   └── input.js          # Keyboard/mouse handler
     ├── audio/                # Sound systems
-    │   └── morse.js          # Morse code player
+    │   ├── morse.js          # Morse code player
+    │   └── stall-warning.js  # Angle-of-attack warning horn
     ├── rendering/            # Visualization
+    │   ├── chart-themes.js   # Fourteen shared UI/map palettes
     │   ├── chart.js          # Navigation chart rendering
+    │   ├── energy-diagram.js # Live energy history
     │   ├── instruments.js    # Flight instruments
     │   └── vectors.js        # Force/velocity vectors
+    ├── ui/                   # ASCII help and configuration overlays
+    │   ├── configuration-panel.js
+    │   └── help-panel.js
     └── utils/                # Shared utilities
         ├── logger.js         # Debug logging
         ├── constants.js      # Physical constants
@@ -304,7 +344,7 @@ The simulator uses:
 ## Known Limitations
 
 - No terrain mesh; airports use flat field elevations and all other terrain is flat
-- Simplified aerodynamic model (no ground effect, wake turbulence)
+- Simplified aerodynamic model; ground effect is modeled, but wake turbulence is not
 - No weather beyond wind (no thermals, clouds)
 - Limited instrumentation (no full glass cockpit)
 
@@ -323,7 +363,7 @@ Potential additions:
 
 - **Language**: JavaScript (ES6 modules)
 - **Rendering**: HTML5 Canvas 2D
-- **Audio**: Web Audio API (morse code)
+- **Audio**: Web Audio API (morse identifiers and stall warning)
 - **Physics**: Custom 6DOF implementation
 - **No external dependencies**: Vanilla JavaScript
 
