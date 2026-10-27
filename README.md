@@ -9,17 +9,18 @@ outside view.
 
 ## Demo films
 
-Click a poster to open the full-resolution, silent MP4 demo.
+The lightweight GIF previews play directly on GitHub. Click one—or use its
+explicit link—to open the full-resolution, silent MP4 file.
 
 | Force vectors | Map themes |
 | --- | --- |
-| [![Force vectors visualized in the simulator](media/demos/force-vectors.jpg)](media/demos/force-vectors.mp4) | [![Solarized Dark and other map themes](media/demos/map-themes.jpg)](media/demos/map-themes.mp4) |
-| Lift, drag, thrust, weight, wind, velocity, and ground track become the aircraft's visual language. | The same flight rendered across black-and-white, Nord, GitHub, Solarized, Dracula, and other palettes. |
+| [![Force vectors visualized in the simulator](media/demos/force-vectors.gif)](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/force-vectors.mp4) | [![Solarized Dark and other map themes](media/demos/map-themes.gif)](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/map-themes.mp4) |
+| Lift, drag, thrust, weight, wind, velocity, and ground track become the aircraft's visual language. [Raw MP4](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/force-vectors.mp4) | The same flight rendered across black-and-white, Nord, GitHub, Solarized, Dracula, and other palettes. [Raw MP4](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/map-themes.mp4) |
 
 | Flight envelope | Crosswind landing |
 | --- | --- |
-| [![A fast-forward stall and spin scenario](media/demos/flight-envelope.jpg)](media/demos/flight-envelope.mp4) | [![A crosswind landing on runway 18](media/demos/crosswind-landing.jpg)](media/demos/crosswind-landing.mp4) |
-| A compressed scenario moving from normal flight through overspeed, stall, spin, and recovery. | A scripted runway 18 approach in a fixed 270° at 18-knot crosswind, scored by the simulator. |
+| [![A fast-forward stall and spin scenario](media/demos/flight-envelope.gif)](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/flight-envelope.mp4) | [![A crosswind landing on runway 18](media/demos/crosswind-landing.gif)](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/crosswind-landing.mp4) |
+| A compressed scenario moving from normal flight through overspeed, stall, spin, and recovery. [Raw MP4](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/flight-envelope.mp4) | A scripted runway 18 approach in a fixed 270° at 18-knot crosswind, scored by the simulator. [Raw MP4](https://raw.githubusercontent.com/stellan-s/flight-sim/main/media/demos/crosswind-landing.mp4) |
 
 ## Features
 
@@ -87,7 +88,7 @@ flight-sim/
 ├── index.html           # Main HTML file
 ├── README.md           # This file
 ├── media/
-│   └── demos/                 # README posters and MP4 demo films
+│   └── demos/                 # README GIF previews, posters, and MP4 films
 ├── data/
 │   └── chart-features.json   # VORs, airports, obstacles
 └── src/
