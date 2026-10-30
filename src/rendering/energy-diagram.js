@@ -149,8 +149,8 @@ export class EnergyDiagram {
     const canvasWidth = this.chart.canvas.width;
     const canvasHeight = this.chart.canvas.height;
 
-    // Position at bottom of screen
-    const diagramY = canvasHeight - this.height - 10;
+    // Leave a dedicated footer row below the chart so HUD modes never overlap it.
+    const diagramY = canvasHeight - this.height - 36;
     const diagramX = this.margin.left;
     const diagramWidth = canvasWidth - this.margin.left - this.margin.right;
     const plotHeight = this.height - this.margin.top - this.margin.bottom;

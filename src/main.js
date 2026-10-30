@@ -26,6 +26,7 @@ import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
 import { EnergyDiagram } from './rendering/energy-diagram.js';
+import { drawAsciiText } from './rendering/ascii-hud.js';
 import { ConfigurationPanel } from './ui/configuration-panel.js';
 import { HelpPanel } from './ui/help-panel.js';
 import { InstructorOverlay } from './ui/instructor-overlay.js';
@@ -885,36 +886,25 @@ class FlightSimulator {
   drawPauseOverlay() {
     const ctx = this.chart.ctx;
     const canvas = this.chart.canvas;
+    const palette = this.chart.palette;
+    const centerX = canvas.width / 2;
+    const y = 105;
 
-    ctx.save();
-
-    // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // PAUSED text
-    ctx.font = 'bold 48px monospace';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 3;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    const text = '⏸ PAUSED';
-    ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-
-    // Instructions
-    ctx.font = '16px monospace';
-    ctx.fillText('Press P to resume', canvas.width / 2, canvas.height / 2 + 50);
-    ctx.fillText('Press H for VOR navigation help (scrollable)', canvas.width / 2, canvas.height / 2 + 75);
-    ctx.fillText('C or ENTER: Configure all simulator parameters', canvas.width / 2, canvas.height / 2 + 100);
-
-    ctx.font = '12px monospace';
-    ctx.fillStyle = '#AAAAAA';
-    ctx.fillText('(Controls work while paused for planning)', canvas.width / 2, canvas.height / 2 + 125);
-
-    ctx.restore();
+    drawAsciiText(ctx, '|| PAUSED', centerX, y, {
+      color: palette.foreground,
+      haloColor: palette.panelSolid,
+      font: 'bold 24px "B612 Mono", monospace',
+      align: 'center',
+      baseline: 'middle',
+      haloWidth: 5
+    });
+    drawAsciiText(ctx, '[P] RESUME   [H] HELP   [C] CONFIG', centerX, y + 29, {
+      color: palette.muted,
+      haloColor: palette.panelSolid,
+      font: '11px "B612 Mono", monospace',
+      align: 'center',
+      baseline: 'middle'
+    });
   }
 
   drawHelpOverlay() {

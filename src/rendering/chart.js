@@ -1,6 +1,7 @@
 // Aviation chart rendering (Jeppesen/Navigraph style)
 
 import { CONFIG } from '../config.js';
+import { drawAsciiText } from './ascii-hud.js';
 import { CHART_THEME_NAMES, getChartTheme } from './chart-themes.js';
 
 export class ChartRenderer {
@@ -292,7 +293,7 @@ export class ChartRenderer {
     this.ctx.stroke();
   }
 
-  // Draw text with background
+  // Draw force and motion labels in color-coded boxes for unambiguous vectors.
   drawLabel(x, y, text, bgColor = null, textColor = null) {
     bgColor ??= this.palette.panelSolid;
     textColor ??= this.palette.foreground;
@@ -302,7 +303,6 @@ export class ChartRenderer {
     const padding = 3;
     const boxHeight = 14;
 
-    // Background
     this.ctx.fillStyle = bgColor;
     this.ctx.fillRect(
       x - padding,
@@ -311,7 +311,6 @@ export class ChartRenderer {
       boxHeight
     );
 
-    // Border
     this.ctx.strokeStyle = textColor;
     this.ctx.lineWidth = 0.5;
     this.ctx.strokeRect(
@@ -321,7 +320,6 @@ export class ChartRenderer {
       boxHeight
     );
 
-    // Text (centered in box)
     this.ctx.fillStyle = textColor;
     this.ctx.fillText(text, x, y);
   }
@@ -391,18 +389,24 @@ export class ChartRenderer {
     const heading = Math.round((state.orientation.yaw * 180 / Math.PI + 360) % 360);
     const climb = Math.round(state.getClimbRate());
 
-    this.ctx.font = '14px monospace';
-    this.ctx.fillStyle = this.palette.foreground;
+    const primary = `ALT ${String(altitude).padStart(5, '0')}FT | IAS ${String(ias).padStart(3, '0')}KT | HDG ${String(heading).padStart(3, '0')}° | VS ${climb >= 0 ? '+' : ''}${String(climb).padStart(4, '0')}FPM`;
+    const secondary = windModel
+      ? `WND ${String(Math.round(windModel.direction)).padStart(3, '0')}°/${String(Math.round(windModel.speed)).padStart(2, '0')}KT | Z ${zoom.toFixed(1)}X`
+      : `Z ${zoom.toFixed(1)}X`;
 
-    // Top line instruments
-    let text = `ALT ${altitude} FT    ZOOM ${zoom.toFixed(1)}x    IAS ${ias} KT    HDG ${heading}°    VS ${climb > 0 ? '+' : ''}${climb} FPM`;
-
-    // Add wind info if available
-    if (windModel) {
-      text += `    WND ${Math.round(windModel.direction)}°@${Math.round(windModel.speed)}KT`;
-    }
-
-    this.ctx.fillText(text, 20, 30);
+    drawAsciiText(this.ctx, primary, 20, 21, {
+      color: this.palette.foreground,
+      haloColor: this.palette.panelSolid,
+      font: 'bold 12px "B612 Mono", monospace',
+      baseline: 'middle'
+    });
+    drawAsciiText(this.ctx, secondary, this.canvas.width - 20, 21, {
+      color: this.palette.foreground,
+      haloColor: this.palette.panelSolid,
+      font: 'bold 12px "B612 Mono", monospace',
+      align: 'right',
+      baseline: 'middle'
+    });
   }
 
   // Draw VOR station (compass rose symbol)
@@ -969,19 +973,8 @@ export class ChartRenderer {
       ctx.closePath();
       ctx.fill();
 
-      // Label showing heading
-      const hdgDeg = Math.round((aircraftHeading * 180 / Math.PI + 360) % 360);
-      const labelX = acPos.x + headingDirection.x * (headingLength / 2);
-      const labelY = acPos.y + headingDirection.y * (headingLength / 2);
-
-      ctx.font = 'bold 11px monospace';
-      ctx.fillStyle = this.palette.panelSolid;
-      ctx.strokeStyle = this.palette.heading;
-      ctx.lineWidth = 3;
-      ctx.textAlign = 'center';
-      const text = `HDG ${hdgDeg.toString().padStart(3, '0')}°`;
-      ctx.strokeText(text, labelX, labelY);
-      ctx.fillText(text, labelX, labelY);
+      // Heading is already reported in the top strip and flight readout. Keep
+      // the vector itself unlabeled so it cannot collide with force labels.
     }
 
     ctx.restore();
@@ -1017,31 +1010,24 @@ export class ChartRenderer {
   // Draw rotation mode indicator
   drawRotationModeIndicator() {
     const ctx = this.ctx;
-    const x = 20;
-    const y = this.canvas.height - 30;
-
-    ctx.save();
-
-    ctx.font = '12px "B612 Mono", monospace';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillStyle = this.palette.foreground;
+    const x = 176;
+    const y = this.canvas.height - 16;
 
     const modeText = this.rotationMode === 'north-up' ? 'NORTH UP' : 'TRACK UP';
-    const helpText = this.rotationMode === 'north-up' ? '(Press T for Track-Up)' : '(Press N for North-Up)';
-
-    ctx.fillText(`MAP: ${modeText}`, x, y);
-    ctx.font = '10px "B612 Mono", monospace';
-    ctx.fillStyle = this.palette.muted;
-    ctx.fillText(helpText, x, y + 15);
-
-    ctx.restore();
+    const key = this.rotationMode === 'north-up' ? 'T' : 'N';
+    drawAsciiText(ctx, `MAP ${modeText} [${key}]`, x, y, {
+      color: this.palette.foreground,
+      haloColor: this.palette.panelSolid,
+      font: '10px "B612 Mono", monospace',
+      baseline: 'alphabetic'
+    });
   }
 
   // Draw flight timer
   drawFlightTimer(flightTime) {
     const ctx = this.ctx;
     const x = this.canvas.width - CONFIG.FLIGHT_TIMER_X;
-    const y = this.canvas.height - CONFIG.FLIGHT_TIMER_Y;
+    const y = this.canvas.height - 16;
 
     ctx.save();
 
@@ -1052,12 +1038,14 @@ export class ChartRenderer {
 
     const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 
-    ctx.font = '12px "B612 Mono", monospace';
-    ctx.fillStyle = this.palette.foreground;
-    ctx.textAlign = 'right';
-    ctx.fillText(`TIME: ${timeStr}`, x, y);
-
     ctx.restore();
+    drawAsciiText(ctx, `TIME ${timeStr}`, x, y, {
+      color: this.palette.foreground,
+      haloColor: this.palette.panelSolid,
+      font: '10px "B612 Mono", monospace',
+      align: 'right',
+      baseline: 'alphabetic'
+    });
   }
 
   /**
@@ -1131,66 +1119,29 @@ export class ChartRenderer {
     if (!navData) return;
 
     const ctx = this.ctx;
-    const x = this.canvas.width - 280;
-    const y = this.canvas.height - 180;
-    const width = 260;
-    const height = 140;
+    const compact = this.canvas.width < 1100;
+    const x = compact ? 20 : Math.max(20, this.canvas.width - 300);
+    const y = compact ? 92 : Math.max(250, this.canvas.height - 340);
+    const lineHeight = 15;
+    const lines = [
+      { text: `NAV ${navData.airport.id} ${navData.airport.name.toUpperCase()}`, color: this.palette.accent, bold: true },
+      { text: `DST ${navData.distance.toFixed(1)}NM | BRG ${Math.round(navData.bearing).toString().padStart(3, '0')}° | ETA ${navData.eta.minutes}:${navData.eta.seconds.toString().padStart(2, '0')}` }
+    ];
 
-    ctx.save();
-
-    // Background box
-    ctx.fillStyle = this.palette.panel;
-    ctx.fillRect(x, y, width, height);
-
-    // Border
-    ctx.strokeStyle = this.palette.border;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x, y, width, height);
-
-    // Content
-    ctx.fillStyle = this.palette.foreground;
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-
-    // Title
-    ctx.font = 'bold 12px "B612 Mono", monospace';
-    ctx.fillText(`TO: ${navData.airport.id} - ${navData.airport.name}`, x + 10, y + 10);
-
-    // Navigation data
-    ctx.font = '11px "B612 Mono", monospace';
-    const lineHeight = 16;
-    let currentY = y + 32;
-
-    ctx.fillText(`Distance: ${navData.distance.toFixed(1)} NM`, x + 10, currentY);
-    currentY += lineHeight;
-
-    ctx.fillText(`Bearing: ${Math.round(navData.bearing).toString().padStart(3, '0')}°`, x + 10, currentY);
-    currentY += lineHeight;
-
-    ctx.fillText(`ETA: ${navData.eta.minutes}:${navData.eta.seconds.toString().padStart(2, '0')}`, x + 10, currentY);
-    currentY += lineHeight + 5;
-
-    // Active runway
     if (navData.activeRunway) {
-      ctx.fillStyle = this.palette.accent;
-      ctx.fillText(`Active Runway: ${navData.activeRunway.id}`, x + 10, currentY);
-      currentY += lineHeight;
-
-      ctx.fillStyle = this.palette.foreground;
-      ctx.fillText(`Pattern: ${navData.activeRunway.trafficPattern.side.toUpperCase()}`, x + 10, currentY);
-      currentY += lineHeight;
-
-      ctx.fillText(`Altitude: ${navData.patternAltitude} FT`, x + 10, currentY);
-      currentY += lineHeight + 5;
+      lines.push({ text: `RWY ${navData.activeRunway.id} | ${navData.activeRunway.trafficPattern.side.toUpperCase()} PATTERN | ${navData.patternAltitude}FT` });
     }
 
-    // Recommended entry
     if (navData.recommendedEntry) {
-      ctx.fillStyle = this.palette.selectedText;
-      ctx.font = 'bold 11px "B612 Mono", monospace';
-      ctx.fillText(`Entry: ${navData.recommendedEntry}`, x + 10, currentY);
+      lines.push({ text: `ENTRY ${navData.recommendedEntry.toUpperCase()}`, color: this.palette.selectedText, bold: true });
     }
 
-    ctx.restore();
+    lines.forEach((line, index) => {
+      drawAsciiText(ctx, line.text, x, y + index * lineHeight, {
+        color: line.color ?? this.palette.foreground,
+        haloColor: this.palette.panelSolid,
+        font: `${line.bold ? 'bold ' : ''}10px "B612 Mono", monospace`
+      });
+    });
   }
 }

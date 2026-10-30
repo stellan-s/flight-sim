@@ -62,3 +62,26 @@ test('force projection preserves vertical lift and weight directions', () => {
   assert.ok(Math.hypot(weight.x, weight.y) > 0);
   assertVector(lift, { x: -weight.x, y: -weight.y });
 });
+
+test('vector labels retain their filled color-coded boxes', () => {
+  const operations = [];
+  const ctx = {
+    measureText(text) { return { width: text.length * 6 }; },
+    fillRect(...args) { operations.push(['fillRect', this.fillStyle, ...args]); },
+    strokeRect(...args) { operations.push(['strokeRect', this.strokeStyle, ...args]); },
+    fillText(...args) { operations.push(['fillText', this.fillStyle, ...args]); }
+  };
+  const chart = new ChartRenderer({
+    width: 1280,
+    height: 720,
+    getContext: () => ctx
+  });
+
+  chart.drawLabel(200, 160, 'LIFT: 10000N', '#ffffff', '#008800');
+
+  assert.ok(operations.some(([name, color]) => name === 'fillRect' && color === '#ffffff'));
+  assert.ok(operations.some(([name, color]) => name === 'strokeRect' && color === '#008800'));
+  assert.ok(operations.some(([name, color, text]) =>
+    name === 'fillText' && color === '#008800' && text === 'LIFT: 10000N'
+  ));
+});

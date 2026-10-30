@@ -1,3 +1,5 @@
+import { drawAsciiText } from '../rendering/ascii-hud.js';
+
 export class InstructorOverlay {
   constructor() {
     this.message = '';
@@ -27,19 +29,15 @@ export class InstructorOverlay {
     if (!state.visible) return;
 
     const text = `> ${state.message.toUpperCase()}`;
-    ctx.save();
-    ctx.font = 'bold 15px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const width = Math.min(canvas.width - 32, ctx.measureText(text).width + 36);
     const x = canvas.width / 2;
-    const y = canvas.height - 116;
-    ctx.fillStyle = palette.panel;
-    ctx.fillRect(x - width / 2, y - 18, width, 36);
-    ctx.strokeStyle = state.level === 'warning' ? palette.warning : palette.border;
-    ctx.strokeRect(x - width / 2, y - 18, width, 36);
-    ctx.fillStyle = state.level === 'warning' ? palette.warning : palette.foreground;
-    ctx.fillText(text, x, y);
-    ctx.restore();
+    const y = Math.max(105, canvas.height - 210);
+    drawAsciiText(ctx, text, x, y, {
+      color: state.level === 'warning' ? palette.warning : palette.foreground,
+      haloColor: palette.panelSolid,
+      font: 'bold 14px "B612 Mono", monospace',
+      align: 'center',
+      baseline: 'middle',
+      haloWidth: 4
+    });
   }
 }

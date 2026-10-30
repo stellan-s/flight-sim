@@ -33,7 +33,7 @@ test('viewport pitch line follows pitch and roll and can be hidden', () => {
   try {
     CONFIG.SHOW_PITCH_INDICATOR = true;
     renderer.drawAttitudeIndicator(state);
-    assert.ok(operations.some(([name]) => name === 'fillRect'));
+    assert.ok(!operations.some(([name]) => name === 'fillRect'));
     assert.ok(operations.some(([name, value]) => name === 'rotate' && Math.abs(value + 5 * Math.PI / 180) < 1e-9));
     assert.ok(operations.some(([name, x, y]) => name === 'moveTo' && x < -1000 && y === 50));
     assert.ok(operations.some(([name, text]) => name === 'fillText' && text === '+10.0°'));
@@ -47,7 +47,7 @@ test('viewport pitch line follows pitch and roll and can be hidden', () => {
   }
 });
 
-test('throttle indicator renders a proportional center-adjacent bar', () => {
+test('throttle indicator renders the proportional center-adjacent vector bar', () => {
   const operations = [];
   const ctx = {
     save() {}, restore() {}, beginPath() {}, stroke() {}, fill() {},
@@ -74,6 +74,7 @@ test('throttle indicator renders a proportional center-adjacent bar', () => {
     assert.ok(fill, 'expected a half-height throttle fill');
     assert.ok(operations.some(([name, text]) => name === 'fillText' && text === '50%'));
     assert.equal(fill[1], 1280 / 2 + CONFIG.THROTTLE_INDICATOR_OFFSET_X + 2);
+    assert.ok(operations.some(([name]) => name === 'strokeRect'));
 
     const operationCount = operations.length;
     CONFIG.SHOW_THROTTLE_INDICATOR = false;
@@ -82,4 +83,49 @@ test('throttle indicator renders a proportional center-adjacent bar', () => {
   } finally {
     CONFIG.SHOW_THROTTLE_INDICATOR = originalVisibility;
   }
+});
+
+test('ground and envelope status use plain text without panel rectangles', () => {
+  const operations = [];
+  const ctx = {
+    save() {}, restore() {},
+    fillText(...args) { operations.push(['fillText', ...args]); },
+    fillRect(...args) { operations.push(['fillRect', ...args]); },
+    strokeRect(...args) { operations.push(['strokeRect', ...args]); }
+  };
+  const renderer = new InstrumentRenderer({
+    ctx,
+    canvas: { width: 1280, height: 720 },
+    palette: getChartTheme('black-white')
+  });
+
+  renderer.drawGroundStatus({
+    contact: true,
+    onRunway: true,
+    airportId: 'KABC',
+    runwayId: '18/36',
+    surfaceType: 'asphalt',
+    groundSpeedKt: 0,
+    brake: 0,
+    crashed: false,
+    phase: 'ground',
+    message: 'LINED UP'
+  });
+  renderer.drawEnvelopeStatus({
+    loadFactorG: 1,
+    phase: 'normal',
+    alphaDeg: 2,
+    failed: false,
+    spinning: false,
+    recovering: false,
+    warning: false,
+    overspeed: false,
+    structuralDamage: 0,
+    groundEffect: 0,
+    stalled: false
+  }, { flaps: 0 }, { flapMaxDeg: 30 });
+
+  assert.ok(operations.some(([name, text]) => name === 'fillText' && text.startsWith('GROUND ')));
+  assert.ok(operations.some(([name, text]) => name === 'fillText' && text.startsWith('ENVELOPE ')));
+  assert.ok(!operations.some(([name]) => name === 'fillRect' || name === 'strokeRect'));
 });

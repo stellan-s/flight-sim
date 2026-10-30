@@ -1,6 +1,7 @@
 // Flight instruments drawn directly into the chart viewport.
 
 import { CONFIG } from '../config.js';
+import { drawAsciiText } from './ascii-hud.js';
 
 const RAD_TO_DEG = 180 / Math.PI;
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -66,13 +67,13 @@ export class InstrumentRenderer {
     ctx.textBaseline = 'middle';
     const pitchText = `${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`;
     const labelX = -canvas.width / 2 + 40;
-    const labelWidth = ctx.measureText(pitchText).width;
-    ctx.fillStyle = palette.panelSolid;
-    ctx.fillRect(labelX - 3, -7, labelWidth + 6, 14);
-    ctx.strokeStyle = horizonColor;
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(labelX - 3, -7, labelWidth + 6, 14);
-    ctx.fillStyle = palette.foreground;
+    if (typeof ctx.strokeText === 'function') {
+      ctx.strokeStyle = palette.panelSolid;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(pitchText, labelX, 0);
+    }
+    ctx.fillStyle = horizonColor;
     ctx.fillText(pitchText, labelX, 0);
     ctx.restore();
 
@@ -170,7 +171,6 @@ export class InstrumentRenderer {
       ctx.stroke();
     }
 
-    // A small pointer makes the exact command readable even at low fill levels.
     ctx.fillStyle = palette.accent;
     ctx.beginPath();
     ctx.moveTo(x + width + 2, commandY);
@@ -194,31 +194,20 @@ export class InstrumentRenderer {
     const motionLabel = status.contact
       ? `GS ${Math.round(status.groundSpeedKt)}KT BRAKE ${Math.round(status.brake * 100)}%`
       : '';
-    const line = `${status.crashed ? 'CRASHED' : status.phase.toUpperCase()} | ${groundLabel}${motionLabel ? ` | ${motionLabel}` : ''}`;
+    const line = status.contact
+      ? `GROUND${status.crashed ? ' CRASHED' : ''} | ${groundLabel}${motionLabel ? ` | ${motionLabel}` : ''}${status.message ? ` | ${status.message}` : ''}`
+      : `${groundLabel} | PHASE ${status.phase.toUpperCase()}`;
     const color = status.crashed
       ? palette.danger
       : status.contact ? palette.selectedText : palette.foreground;
     const x = 20;
-    const y = 57;
+    const y = 46;
 
-    ctx.save();
-    ctx.font = 'bold 10px "B612 Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const width = ctx.measureText(line).width + 10;
-    ctx.fillStyle = palette.panel;
-    ctx.fillRect(x - 5, y - 3, width, status.message ? 31 : 16);
-    ctx.strokeStyle = palette.border;
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(x - 5, y - 3, width, status.message ? 31 : 16);
-    ctx.fillStyle = color;
-    ctx.fillText(line, x, y);
-
-    if (status.message) {
-      ctx.fillStyle = status.crashed ? palette.danger : palette.accent;
-      ctx.fillText(status.message, x, y + 15);
-    }
-    ctx.restore();
+    drawAsciiText(ctx, line, x, y, {
+      color,
+      haloColor: palette.panelSolid,
+      font: 'bold 10px "B612 Mono", monospace'
+    });
   }
 
   drawEnvelopeStatus(status, controls, specs) {
@@ -254,29 +243,13 @@ export class InstrumentRenderer {
       ? palette.danger
       : caution ? palette.warning : palette.foreground;
     const x = 20;
-    const y = 96;
+    const y = 63;
+    const line = `ENVELOPE | ${mainLine}${actionLine ? ` | ${actionLine}` : ''}`;
 
-    ctx.save();
-    ctx.font = 'bold 10px "B612 Mono", monospace';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    const width = Math.max(
-      ctx.measureText(mainLine).width,
-      actionLine ? ctx.measureText(actionLine).width : 0
-    ) + 10;
-    const height = actionLine ? 31 : 16;
-    ctx.fillStyle = palette.panel;
-    ctx.fillRect(x - 5, y - 3, width, height);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(x - 5, y - 3, width, height);
-    ctx.fillStyle = color;
-    ctx.fillText(mainLine, x, y);
-
-    if (actionLine) {
-      ctx.fillStyle = danger ? palette.danger : palette.accent;
-      ctx.fillText(actionLine, x, y + 15);
-    }
-    ctx.restore();
+    drawAsciiText(ctx, line, x, y, {
+      color: actionLine ? (danger ? palette.danger : palette.accent) : color,
+      haloColor: palette.panelSolid,
+      font: 'bold 10px "B612 Mono", monospace'
+    });
   }
 }

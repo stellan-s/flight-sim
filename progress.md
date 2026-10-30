@@ -318,6 +318,48 @@ Implement all seven approved simulator improvements while preserving the existin
 - Text telemetry now reports effective zoom, requested zoom, and whether ground
   zoom is active. Persistence stores the requested value rather than the
   temporary ground value.
+
+## Boxless ASCII HUD (2026-10-30)
+
+- Kept the original solid vertical throttle tape and added shared deterministic
+  helpers for the new horizontal ASCII control gauges.
+- Removed panel rectangles from ground, envelope, vector-mode, pitch-label,
+  airport-navigation, and instructor HUD elements. Force, moment, and motion
+  vector labels deliberately retain their color-coded boxes. Narrow
+  theme-colored text halos preserve legibility for the remaining plain text.
+- Rebuilt the top-right flight/force/control readout as compact sections with
+  ASCII elevator, trim, throttle, and flap meters.
+- Reserved separate top status rows, a bottom mode/timer footer, and extra
+  clearance below the energy diagram to prevent the known HUD overlaps.
+- Added collision-aware boxed vector-label placement with reserved HUD zones for
+  the top strip, original throttle tape, state readout, navigation, instructor
+  line, energy graph, and footer. A compact layout moves airport navigation to
+  the left at widths below 1100 pixels.
+- Replaced the full-screen dimmed pause layer with a boxless `|| PAUSED` ASCII
+  status and compact key hints above the flight display.
+- Added regression coverage that requires runtime ground/envelope status to
+  remain rectangle-free, the throttle to retain its filled vector bar, and
+  boxed vector labels to avoid reserved regions.
+- Corrected the first HUD interpretation after user review: force, moment, and
+  motion labels are boxed again, while the original filled throttle tape is
+  restored at its original 96-pixel center offset. Collision-aware placement
+  now measures the complete label boxes, including their padding.
+- Browser QA verified boxed vector labels at runway start and the restored
+  throttle tape at 0% and 65%. The labels avoided the tape and each other, the
+  state reported the same 65% command, and no console errors occurred.
+- A 1024×640 airborne pass with navigation and instructor text confirmed the
+  wider label boxes also remain separated in the compact layout.
+- Current automated result: 79 tests plus JavaScript syntax validation passing.
+
+### HUD QA remaining
+
+- [x] Inspect the boxless HUD in the browser at runway start and in flight.
+- [x] Verify vector/map footer separation and energy-chart clearance.
+- [x] Verify the active airport-navigation readout and instructor message.
+- [x] Check Nord plus black-and-white at 1280×720 and 1024×640.
+- [x] Exercise pause, elevator, aileron, rudder, and brake input through the
+  Playwright game client; screenshots and state were produced without browser
+  errors.
 - Automated checks pass: 74 tests and JavaScript syntax validation. Browser QA
   verified 6x on the runway and restoration to 3x in an airborne scenario with
   no console or page errors.
