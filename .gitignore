@@ -1,2 +1,15 @@
 # Local Netlify folder
 .netlify
+
+# Installed JavaScript dependencies
+node_modules/
+
+# Local render and test output
+brag-output*/
+output/
+coverage/
+*.log
+.DS_Store
+
+# Per-user Claude Code permissions
+.claude/settings.local.json

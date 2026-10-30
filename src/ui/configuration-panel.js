@@ -598,8 +598,14 @@ export class ConfigurationPanel {
         numericProperty(CONFIG, 'DEFAULT_ZOOM', 'Default zoom', { step: 0.1, min: 0.01, max: 1000, precision: 1, unit: 'x' }),
         enumItem('Default map rotation', () => CONFIG.DEFAULT_ROTATION_MODE,
           value => { CONFIG.DEFAULT_ROTATION_MODE = value; }, ['north-up', 'track-up']),
-        numberItem('Zoom', () => sim.chart.zoom, value => sim.chart.setZoom(value), {
+        numberItem('Zoom', () => sim.chart.requestedZoom, value => sim.chart.setZoom(value), {
           step: 0.1, min: CONFIG.MIN_ZOOM, max: CONFIG.MAX_ZOOM, precision: 1, unit: 'x'
+        }),
+        numericProperty(CONFIG, 'GROUND_MAP_ZOOM', 'Ground minimum zoom', {
+          step: 0.5, min: 0.1, max: 1000, precision: 1, unit: 'x'
+        }),
+        numericProperty(CONFIG, 'GROUND_ZOOM_TRANSITION_RATE', 'Ground zoom transition', {
+          step: 0.5, min: 0, max: 100, precision: 1, unit: '/s'
         }),
         numericProperty(CONFIG, 'MIN_ZOOM', 'Minimum zoom', { step: 0.1, min: 0.01, max: 100, precision: 2, unit: 'x' }),
         numericProperty(CONFIG, 'MAX_ZOOM', 'Maximum zoom', { step: 0.5, min: 0.1, max: 1000, precision: 1, unit: 'x' }),

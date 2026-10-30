@@ -43,6 +43,8 @@ export const CONFIG = {
   // Chart rendering
   BASE_SCALE: 10000,       // meters per degree at zoom=1
   DEFAULT_ZOOM: 3.0,
+  GROUND_MAP_ZOOM: 6.0,
+  GROUND_ZOOM_TRANSITION_RATE: 4.0,
   MAX_ZOOM: 15.0,
   MIN_ZOOM: 0.1,
   ZOOM_SPEED: 1.1,         // Zoom multiplier per scroll

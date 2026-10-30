@@ -7,6 +7,31 @@ outside view.
 
 **[Fly the live simulator](https://stellan-flight-sim.netlify.app)**
 
+## Install and run
+
+Requirements: Git and Node.js 20 or newer.
+
+```bash
+git clone https://github.com/stellan-s/flight-sim.git
+cd flight-sim
+npm ci
+npm start
+```
+
+Open [http://127.0.0.1:3005](http://127.0.0.1:3005). This starts the complete
+local package: simulator, browser bridge, health endpoint, and MCP server.
+
+The repository already contains project configuration for Claude Code, Cursor,
+and compatible GitHub Copilot clients. To connect Codex, keep the server and
+simulator tab open, then register the MCP endpoint once:
+
+```bash
+codex mcp add flight-sim --url http://127.0.0.1:3005/mcp
+```
+
+See the [complete MCP guide for Codex, Claude Code, Cursor, VS Code/GitHub
+Copilot, and other Streamable HTTP clients](docs/MCP.md).
+
 ## Demo films
 
 The lightweight GIF previews play directly on GitHub. Click one—or use its
@@ -81,12 +106,25 @@ explicit link—to open the full-resolution, silent MP4 file.
   - Live editing of physics, aircraft, controls, wind, airports, runways, VORs,
     obstacles, ground handling, persistence, and display settings
 
+- **Live MCP Server**: Connect AI clients to the running browser simulation
+  - Structured flight, force, navigation, configuration, and landing data
+  - Internal heading, altitude, airspeed, waypoint, pattern, and approach control
+  - Timestamped flight recorder and in-simulator instructor instructions
+  - Flight-instructor and scenario-director prompt templates
+
 ## Project Structure
 
 ```
 flight-sim/
+├── .mcp.json             # Portable Claude/Copilot MCP configuration
+├── .cursor/mcp.json      # Cursor project MCP configuration
+├── .github/workflows/ci.yml # GitHub test workflow
 ├── index.html           # Main HTML file
 ├── README.md           # This file
+├── docs/MCP.md         # Complete MCP setup and troubleshooting
+├── server/
+│   ├── mcp-server.mjs        # MCP HTTP server, game host, and WebSocket bridge
+│   └── game-session.mjs      # Live browser session and command correlation
 ├── media/
 │   └── demos/                 # README GIF previews, posters, and MP4 films
 ├── data/
@@ -94,9 +132,15 @@ flight-sim/
 └── src/
     ├── main.js                # Entry point and game loop
     ├── config.js              # Configuration constants
+    ├── integrations/
+    │   ├── mcp-adapter.js     # Deliberate simulator read/write API
+    │   └── mcp-bridge.js      # Browser-to-MCP WebSocket connection
     ├── core/                  # Physics simulation
     │   ├── aircraft.js        # Aircraft state and specs
     │   ├── flight-envelope.js # Stall, spin, damage, and recovery state
+    │   ├── flight-controller.js # Internal high-level flight controllers
+    │   ├── flight-metrics.js  # Instructor and navigation telemetry
+    │   ├── flight-recorder.js # Timestamped flight recorder
     │   ├── physics.js         # 6DOF physics engine (RK4)
     │   ├── forces.js          # Aerodynamic calculations
     │   ├── ground.js          # Runway contact and landing evaluation
@@ -117,7 +161,8 @@ flight-sim/
     │   └── vectors.js        # Force/velocity vectors
     ├── ui/                   # ASCII help and configuration overlays
     │   ├── configuration-panel.js
-    │   └── help-panel.js
+    │   ├── help-panel.js
+    │   └── instructor-overlay.js
     └── utils/                # Shared utilities
         ├── logger.js         # Debug logging
         ├── constants.js      # Physical constants
@@ -127,17 +172,83 @@ flight-sim/
 
 ## Running Locally
 
-The simulator uses native browser modules, so serve it over HTTP:
+The default command starts the simulator together with its MCP server:
 
 ```bash
+npm ci
 npm start
+```
+
+Then open [http://127.0.0.1:3005](http://127.0.0.1:3005).
+
+For browser-only mode without MCP, Python 3 is required:
+
+```bash
+npm run web
 ```
 
 Then open [http://127.0.0.1:8765](http://127.0.0.1:8765).
 
+## MCP server
+
+The local MCP server is a Model Context Protocol interface to the actual
+browser-owned simulation. It does not run a second copy of the physics.
+
+Starting the complete package with `npm start` also starts MCP. The explicit
+alias is:
+
+```bash
+npm run mcp
+```
+
+Then open [http://127.0.0.1:3005](http://127.0.0.1:3005). The server redirects
+to MCP mode and the browser connects automatically.
+
+The same process exposes a Streamable HTTP MCP endpoint at
+`http://127.0.0.1:3005/mcp`. Register it in Codex once with:
+
+```bash
+codex mcp add flight-sim --url http://127.0.0.1:3005/mcp
+```
+
+Keep `npm run mcp` running while using the tools. This HTTP arrangement lets
+the browser and MCP client share the same live simulator process without two
+processes competing for port 3005.
+
+The server provides 26 tools, five JSON resources, and two reusable prompts.
+The main operations are:
+
+```text
+get_flight_state       get_force_vectors       get_navigation_state
+get_nearby_airports    get_configuration       get_landing_history
+pause_flight           resume_flight           reset_flight
+set_controls           set_wind                select_airport
+tune_vor               set_display             set_simulator_parameter
+load_scenario          advance_simulation
+set_control_owner      hold_heading            hold_altitude
+hold_airspeed          fly_to_waypoint         join_pattern
+fly_approach           show_instruction        flight_recorder
+```
+
+MCP commands are intended for instruction, configuration, scenario direction,
+and human-timescale control. Heading, altitude, airspeed, waypoint, pattern,
+and approach regulators run continuously inside the game. Keyboard flight
+input immediately returns ownership to the human pilot.
+
+The timestamped recorder samples the live simulation at 10 Hz and can be
+started, stopped, cleared, inspected, or exported through `flight_recorder`.
+Telemetry includes ground track, flight-path angle, turn rate, sideslip,
+height above the selected airport, pattern altitude MSL, and runway-centerline
+distance. Outside airport surfaces, AGL uses a continuous terrain estimate
+interpolated from the chart's known field elevations; adding a real terrain
+dataset later will improve this estimate without changing the telemetry API.
+
+For requirements, generic MCP clients, Codex registration, alternate ports,
+health checks, and troubleshooting, read [docs/MCP.md](docs/MCP.md).
+
 ## Testing
 
-Run the dependency-free Node test suite:
+Run the Node test suite:
 
 ```bash
 npm test

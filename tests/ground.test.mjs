@@ -102,15 +102,62 @@ test('wheel contact releases when the free-flight force points upward', () => {
   state.angularVelocity.q = 1;
   ground.reset({ contact: true });
 
-  const status = ground.update(1 / 60, state, controls, {}, {
-    body: { X: 0, Y: 0, Z: -500 }
-  });
+  let status;
+  let takeoffEvent = null;
+  for (let i = 0; i < 12; i++) {
+    status = ground.update(1 / 60, state, controls, {}, {
+      body: { X: 0, Y: 0, Z: -500 }
+    });
+    if (status.event) {
+      takeoffEvent = status.event;
+      break;
+    }
+  }
 
-  assert.equal(status.event.type, 'takeoff');
+  assert.equal(takeoffEvent.type, 'takeoff');
   assert.equal(status.phase, 'airborne');
   assert.equal(status.contact, false);
   assert.ok(state.orientation.pitch <= CONFIG.GROUND_MAX_ROTATION_DEG * Math.PI / 180);
   assert.ok(state.angularVelocity.q <= 10 * Math.PI / 180);
+});
+
+test('terrain AGL stays continuous after leaving the airport surface', () => {
+  const ground = makeGround();
+  const fieldEdgeMeters = 4000 * 0.3048 * 0.6;
+  const justInside = ground.getSurface(
+    1 + (fieldEdgeMeters - 1) / 111320,
+    2
+  );
+  const justOutside = ground.getSurface(
+    1 + (fieldEdgeMeters + 1) / 111320,
+    2
+  );
+
+  assert.equal(justInside.elevationFt, 725);
+  assert.ok(Math.abs(justOutside.elevationFt - justInside.elevationFt) < 1);
+  assert.notEqual(justOutside.elevationFt, 0);
+});
+
+test('an immediate recontact after liftoff is not graded as a landing', () => {
+  const ground = makeGround();
+  const state = new AircraftState();
+  const controls = new Controls();
+  state.position = { lat: 1, lon: 2, altitude: 725 + CONFIG.GEAR_HEIGHT_FT };
+  state.orientation = { pitch: 8 * Math.PI / 180, roll: 0, yaw: Math.PI / 2 };
+  state.velocity = { u: 28, v: 0, w: 0 };
+  ground.reset({ contact: true });
+
+  for (let i = 0; i < 12; i++) {
+    ground.update(1 / 60, state, controls, {}, { body: { X: 0, Y: 0, Z: -500 } });
+  }
+  state.position.altitude = 725 + CONFIG.GEAR_HEIGHT_FT;
+  state.velocity.w = 0.4;
+  const status = ground.update(1 / 60, state, controls, {});
+
+  assert.equal(status.contact, true);
+  assert.equal(status.phase, 'ground');
+  assert.equal(status.event, null);
+  assert.equal(status.lastReport, null);
 });
 
 test('touchdown is graded and captures runway landing data', () => {

@@ -47,6 +47,9 @@ export class GroundSystem {
     this.contact = false;
     this.crashed = false;
     this.hasBeenAirborne = false;
+    this.landingArmed = false;
+    this.airborneElapsed = 0;
+    this.liftCandidateElapsed = 0;
     this.phase = 'airborne';
     this.elapsed = 0;
     this.lastReport = null;
@@ -62,6 +65,9 @@ export class GroundSystem {
     this.contact = contact;
     this.crashed = false;
     this.hasBeenAirborne = false;
+    this.landingArmed = false;
+    this.airborneElapsed = 0;
+    this.liftCandidateElapsed = 0;
     this.phase = contact ? 'ground' : 'airborne';
     this.elapsed = 0;
     this.lastReport = null;
@@ -70,6 +76,7 @@ export class GroundSystem {
     this.messageUntil = contact ? 8 : 0;
     this.constraintForceEarth = { north: 0, east: 0, down: 0 };
     this.lastGroundVelocity = null;
+    this.surface = null;
   }
 
   findRunway(airportId, runwayEndId) {
@@ -189,17 +196,45 @@ export class GroundSystem {
       }
     }
 
+    const terrainElevationFt = this.getTerrainElevation(lat, lon);
     return fieldSurface ?? {
       airport: null,
       runway: null,
       runwayEnd: null,
-      elevationFt: this.specs.groundAltitude ?? 0,
+      elevationFt: terrainElevationFt,
+      terrainElevationFt,
       surfaceType: 'terrain',
       onRunway: false,
       alongMeters: 0,
       crossMeters: Infinity,
       distance: Infinity
     };
+  }
+
+  getTerrainElevation(lat, lon) {
+    const airports = this.chartFeatures.airports ?? [];
+    if (airports.length === 0) return this.specs.groundAltitude ?? 0;
+
+    const nearest = airports
+      .map(airport => {
+        const offset = offsetMeters(lat, lon, airport.lat, airport.lon);
+        return { airport, distanceSquared: offset.north ** 2 + offset.east ** 2 };
+      })
+      .sort((a, b) => a.distanceSquared - b.distanceSquared)
+      .slice(0, 4);
+
+    if (nearest[0].distanceSquared < 1) return nearest[0].airport.elevation;
+
+    let weightedElevation = 0;
+    let totalWeight = 0;
+    for (const entry of nearest) {
+      const weight = 1 / Math.max(250000, entry.distanceSquared);
+      weightedElevation += entry.airport.elevation * weight;
+      totalWeight += weight;
+    }
+    return totalWeight > 0
+      ? weightedElevation / totalWeight
+      : this.specs.groundAltitude ?? 0;
   }
 
   applyGroundVelocity(state, groundVelocity, windEarth) {
@@ -258,6 +293,7 @@ export class GroundSystem {
 
   update(dt, state, controls, windEarth = {}, freeFlightForces = null) {
     this.elapsed += dt;
+    if (!this.contact) this.airborneElapsed += dt;
     const surface = this.getSurface(state.position.lat, state.position.lon);
     this.surface = surface;
     const contactAltitude = surface.elevationFt + this.options.GEAR_HEIGHT_FT;
@@ -291,7 +327,12 @@ export class GroundSystem {
     const unsupportedUpwardForce = totalForceEarth && totalForceEarth.down < -1;
     const visiblySeparated = clearanceFt > this.options.GROUND_CONTACT_TOLERANCE_FT &&
       groundVelocity.down < -0.25;
-    const liftingOff = this.contact && (unsupportedUpwardForce || visiblySeparated);
+    this.liftCandidateElapsed = this.contact && unsupportedUpwardForce
+      ? this.liftCandidateElapsed + dt
+      : 0;
+    const liftingOff = this.contact && (
+      visiblySeparated || this.liftCandidateElapsed >= 0.18
+    );
     if (liftingOff) {
       const maxGroundPitch = this.options.GROUND_MAX_ROTATION_DEG * Math.PI / 180;
       state.orientation.pitch = Math.min(state.orientation.pitch, maxGroundPitch);
@@ -301,18 +342,29 @@ export class GroundSystem {
         10 * Math.PI / 180
       );
       this.contact = false;
-      this.hasBeenAirborne = true;
+      this.hasBeenAirborne = false;
+      this.landingArmed = false;
+      this.airborneElapsed = 0;
+      this.liftCandidateElapsed = 0;
       this.phase = 'airborne';
       this.message = 'AIRBORNE';
       this.messageUntil = this.elapsed + 3;
       event = this.emit('takeoff');
     }
 
-    const touchingSurface = !this.contact &&
+    const touchingSurface = !this.contact && event?.type !== 'takeoff' &&
       clearanceFt <= this.options.GROUND_CONTACT_TOLERANCE_FT &&
       groundVelocity.down >= 0;
 
     if (touchingSurface) {
+      if (this.hasBeenAirborne) this.landingArmed = true;
+      if (!this.landingArmed) {
+        this.contact = true;
+        this.hasBeenAirborne = false;
+        this.phase = 'ground';
+        this.message = 'GROUND CONTACT — TAKEOFF NOT YET ESTABLISHED';
+        this.messageUntil = this.elapsed + 2;
+      } else
       if (this.hasBeenAirborne && sinkRateFpm >= this.options.BOUNCE_SINK_RATE_FPM &&
           sinkRateFpm < this.options.CRASH_SINK_RATE_FPM) {
         groundVelocity.down = -groundVelocity.down * 0.28;
@@ -325,9 +377,9 @@ export class GroundSystem {
         return this.getStatus(state, controls, groundVelocity, event);
       }
 
-      this.contact = true;
-      this.phase = 'ground';
-      if (this.hasBeenAirborne) {
+      if (this.landingArmed) {
+        this.contact = true;
+        this.phase = 'ground';
         const report = this.evaluateTouchdown(state, surface, sinkRateFpm, groundSpeed);
         this.crashed = report.crashed;
         this.phase = report.crashed ? 'crashed' : 'landed';
@@ -340,7 +392,10 @@ export class GroundSystem {
     }
 
     if (!this.contact) {
-      if (clearanceFt > 10) this.hasBeenAirborne = true;
+      if (clearanceFt > 10 || (clearanceFt > 2 && this.airborneElapsed >= 1)) {
+        this.hasBeenAirborne = true;
+        this.landingArmed = true;
+      }
       this.constraintForceEarth = { north: 0, east: 0, down: 0 };
       return this.getStatus(state, controls, groundVelocity, event);
     }
@@ -442,11 +497,13 @@ export class GroundSystem {
       contact: this.contact,
       crashed: this.crashed,
       hasBeenAirborne: this.hasBeenAirborne,
+      landingArmed: this.landingArmed,
       airportId: surface.airport?.id ?? null,
       runwayId: surface.runway?.id ?? null,
       surfaceType: surface.surfaceType,
       onRunway: surface.onRunway,
       aglFt,
+      terrainElevationFt: surface.elevationFt,
       groundSpeedKt: Math.hypot(velocity.north, velocity.east) * MS_TO_KNOTS,
       brake: clamp(controls.brake ?? 0, 0, 1),
       message: this.messageUntil > this.elapsed ? this.message : '',

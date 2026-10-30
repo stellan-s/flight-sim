@@ -1,11 +1,27 @@
 {
   "name": "flight-sim",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "description": "A vector-only Cessna 172 flight simulator with a live MCP interface.",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "python3 -m http.server 8765 --bind 127.0.0.1",
+    "start": "node server/mcp-server.mjs",
+    "web": "python3 -m http.server 8765 --bind 127.0.0.1",
+    "mcp": "node server/mcp-server.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "npm test && find src -name '*.js' -type f -print0 | xargs -0 -n1 node --check"
-  }
+    "check": "npm test && find src server -type f -print0 | xargs -0 -n1 node --check"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "ws": "^8.22.0",
+    "zod": "^4.6.7"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stellan-s/flight-sim.git"
+  },
+  "homepage": "https://stellan-flight-sim.netlify.app"
 }

@@ -31,6 +31,7 @@ test('chart defaults and zoom limits come from configuration', () => {
   const chart = new ChartRenderer(canvas);
 
   assert.equal(chart.zoom, CONFIG.DEFAULT_ZOOM);
+  assert.equal(chart.requestedZoom, CONFIG.DEFAULT_ZOOM);
   assert.equal(chart.baseScale, CONFIG.BASE_SCALE);
   assert.equal(chart.rotationMode, CONFIG.DEFAULT_ROTATION_MODE);
   assert.equal(chart.theme, CONFIG.DEFAULT_MAP_THEME);
@@ -47,6 +48,16 @@ test('chart defaults and zoom limits come from configuration', () => {
 
   chart.setZoom(CONFIG.MIN_ZOOM - 1);
   assert.equal(chart.zoom, CONFIG.MIN_ZOOM);
+
+  chart.setZoom(3);
+  chart.updateContextZoom(6, 0.25, 4);
+  assert.equal(chart.zoom, 6);
+  assert.equal(chart.requestedZoom, 3);
+  chart.setZoom(2);
+  assert.equal(chart.zoom, 6);
+  assert.equal(chart.requestedZoom, 2);
+  chart.updateContextZoom(null, 0.25, 4);
+  assert.equal(chart.zoom, 2);
 
   const defaultBackground = chart.palette.background;
   assert.equal(chart.setTheme('night'), true);

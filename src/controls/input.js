@@ -176,6 +176,15 @@ export class InputHandler {
       return;
     }
 
+    const manualControlKeys = [
+      'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+      'a', 'A', 'd', 'D', 'w', 'W', 's', 'S',
+      'b', 'B', 'PageUp', 'PageDown', 'Home', 'f', 'F'
+    ];
+    const hasManualInput = manualControlKeys.some(key => this.keys[key]);
+    if (hasManualInput) this.simulator?.flightController?.humanOverride();
+    if (this.simulator?.flightController?.owner !== 'human') return;
+
     // Elevator trim (PageUp/PageDown)
     if (this.keys['PageUp']) {
       // Trim nose down (negative)

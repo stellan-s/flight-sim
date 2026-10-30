@@ -90,7 +90,7 @@ export class PersistenceManager {
       wind: selectedProperties(simulator.wind, WIND_KEYS),
       display: {
         theme: simulator.chart?.theme,
-        zoom: simulator.chart?.zoom,
+        zoom: simulator.chart?.requestedZoom ?? simulator.chart?.zoom,
         rotationMode: simulator.chart?.rotationMode,
         vectorMode: simulator.vectors?.vectorMode
       },

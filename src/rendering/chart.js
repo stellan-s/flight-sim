@@ -8,6 +8,8 @@ export class ChartRenderer {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.zoom = CONFIG.DEFAULT_ZOOM;
+    this.requestedZoom = CONFIG.DEFAULT_ZOOM;
+    this.contextMinimumZoom = null;
     this.centerLat = 0;
     this.centerLon = 0;
     this.rotationMode = CONFIG.DEFAULT_ROTATION_MODE;
@@ -125,7 +127,28 @@ export class ChartRenderer {
   }
 
   setZoom(zoom) {
-    this.zoom = Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, zoom));
+    this.requestedZoom = Math.max(
+      CONFIG.MIN_ZOOM,
+      Math.min(CONFIG.MAX_ZOOM, zoom)
+    );
+    this.zoom = Math.max(
+      this.requestedZoom,
+      this.contextMinimumZoom ?? CONFIG.MIN_ZOOM
+    );
+  }
+
+  updateContextZoom(minimumZoom, dt, transitionRate = 4) {
+    this.contextMinimumZoom = Number.isFinite(minimumZoom)
+      ? Math.max(CONFIG.MIN_ZOOM, Math.min(CONFIG.MAX_ZOOM, minimumZoom))
+      : null;
+    const target = Math.max(
+      this.requestedZoom,
+      this.contextMinimumZoom ?? CONFIG.MIN_ZOOM
+    );
+    const amount = Math.min(1, Math.max(0, dt) * Math.max(0, transitionRate));
+    this.zoom += (target - this.zoom) * amount;
+    if (Math.abs(target - this.zoom) < 0.01) this.zoom = target;
+    return this.zoom;
   }
 
   /**

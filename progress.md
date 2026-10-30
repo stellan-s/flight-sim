@@ -166,6 +166,42 @@ Implement all seven approved simulator improvements while preserving the existin
 - [ ] Add weather layers, turbulence, and cloud/visibility effects.
 - [ ] Add engine mixture, propeller, fuel, and failure management.
 
+## MCP integration (2026-10-30)
+
+- Started a local Model Context Protocol integration requested by the user.
+- Architecture decision: one Node process serves the existing static game on
+  port 3005, exposes MCP over stdio, and exchanges live state/actions with the
+  visible browser session over WebSocket. The browser remains the sole owner of
+  physics state.
+- Planned first release: structured flight/force/navigation/configuration
+  reads plus pause, resume, reset, control, wind, navigation, display, scenario,
+  parameter, and deterministic time-step actions.
+- Completed the local MCP server with 17 tools, five JSON resources, and
+  flight-instructor/scenario-director prompts. The same process hosts the game
+  on port 3005 and communicates with the visible browser over WebSocket.
+- Added a browser adapter for live state, force/moment diagnostics, nearby
+  airports, complete configuration, landing history, flight controls, wind,
+  VOR/airport selection, display settings, runtime parameters, runway/airborne
+  scenarios, pause/resume/reset, and deterministic time advancement.
+- Added MCP session tests and README setup/configuration documentation.
+- End-to-end verification used the real MCP stdio handshake and tools against a
+  connected Chromium game: loaded a trimmed 4,200 ft / 95 kt scenario near
+  KCHR, selected runway 13, set 220°/12 kt wind, and verified 10,187 N lift,
+  10,228 N weight, 901 N thrust, 900 N drag, 0.99 G, correct AGL/terrain state,
+  and zero browser console errors.
+- Final automated check passes: 64 tests plus JavaScript syntax validation.
+- Replaced the combined stdio/HTTP-host startup with a local Streamable HTTP
+  endpoint at `/mcp`. Codex can now connect to the already-running game host
+  instead of spawning a second process that either collides on port 3005 or is
+  denied permission to bind the port from its sandbox.
+- Verified MCP initialization, all 17 tool definitions, the live browser bridge,
+  and `get_flight_state` over HTTP. Updated the global `flight-sim` Codex entry
+  to `http://127.0.0.1:3005/mcp`.
+- Re-ran the full 64-test check and the required Playwright game smoke pass.
+  The inspected screenshot and text state both showed the aircraft stationary
+  on KABC runway 18, the default black-and-white vector display, and no browser
+  errors after the transport change.
+
 ## Audible stall warning (2026-10-25)
 
 - Added a dedicated browser Web Audio stall horn, distinct from the VOR Morse
@@ -193,3 +229,95 @@ Implement all seven approved simulator improvements while preserving the existin
 - Full check passes: 61 tests plus JavaScript syntax validation.
 - Browser QA verified top/middle/end navigation, close/reopen behavior, and
   black-white plus Nord rendering with no console or page errors.
+
+## Three-film brag series (2026-10-27)
+
+- Created a new timestamped, uncommitted video run under
+  `brag-output-2026-10-27-145758/` with separate vector, theme, and scenario
+  plans, composition briefs, compositions, and share copy.
+- Vector film isolates complete, force-only, motion-only, and recombined vector
+  views from the real simulator capture.
+- Theme film retimes one uninterrupted real flight through Black + White,
+  Phosphor, Amber, Nord, Dracula, GitHub Dark, Solarized Dark, Tokyo Night, and
+  back to the default palette.
+- Scenario capture runs the real simulator deterministically at 2× time. The
+  final scripted training run progresses from crosswind cruise through a stall
+  and developed spin; opposite rudder and forward elevator break the spin, but
+  the deliberately late pullout exceeds the structural limit.
+- All three films remain silent and use only low, flat-background subtitles.
+- HyperFrames validation passed for all three compositions: no lint, runtime,
+  layout, motion, or contrast failures. The only craft warning is intentional
+  silence.
+- Inspected contact sheets and final poster frames for all three films.
+- Rendered `vectors/brag.mp4` and `themes/brag.mp4` at 20 seconds each, plus
+  `scenario/brag.mp4` at 22 seconds. All are 1920×1080 H.264 at 30 fps with no
+  audio stream.
+- Baked each selected poster into frame zero and verified the encoded first
+  frames visually.
+
+## Crosswind-landing film (2026-10-27)
+
+- Planned a separate 22-second silent film showing a complete landing on KABC
+  runway 18 in an 18-knot westerly crosswind.
+- Added a deterministic Playwright capture controller that flies the real
+  physics model at 2× simulation time: crabbed final, centerline intercept,
+  decrab, upwind wing low, flare, touchdown, and braking.
+- Froze the scenario at exactly 270°/18 kt so the displayed wind and active
+  runway remain consistent throughout the film.
+- Iterated the approach using image-free trial runs. The verified run touches
+  down on asphalt 13 m left of centerline with a `GOOD` 52/100 landing at
+  239 ft/min, 53 kt groundspeed, 5.5° bank, and 7.2° pitch.
+- Recorded the final UI footage and built the HyperFrames composition with six
+  plain subtitle cards and no audio.
+- HyperFrames check passes lint, runtime, layout, motion, and all 4/4 WCAG AA
+  contrast checks. The only warning is the intentional silent-film warning.
+- Rendered the 22-second 1920×1080 H.264 delivery at 30 fps, generated the
+  landing poster, and baked that poster into frame zero for sharing previews.
+
+## Flight-test and MCP control architecture (2026-10-30)
+
+- Replaced the airport-boundary AGL fallback with a continuous terrain estimate
+  interpolated from the nearest charted field elevations. AGL no longer jumps
+  to MSL when the aircraft leaves the modeled airport surface.
+- Added takeoff/landing hysteresis: upward force must persist before wheel
+  contact releases, landing evaluation is not armed until flight is established,
+  and an immediate recontact cannot create a false scored touchdown.
+- Added explicit `human`, `instructor`, and `autopilot` control ownership.
+  Keyboard flight input disconnects non-human control; MCP direct controls no
+  longer get overwritten by the keyboard return-to-neutral logic.
+- Added in-game heading, altitude, and airspeed regulators plus waypoint,
+  traffic-pattern, and approach route guidance. MCP now submits targets instead
+  of attempting a networked 60 Hz control loop.
+- Added a Worker-backed background clock so physics continues while rendering
+  is throttled in a hidden tab. Deterministic `advance_simulation` remains
+  available for tests and server-directed stepping.
+- Expanded telemetry with ground track, flight-path angle, turn rate, sideslip,
+  selected-airport height, pattern altitude MSL, terrain elevation, runway
+  centerline error, control owner, clock mode, and controller targets.
+- Added a themed ASCII instructor subtitle inside the canvas and an MCP
+  `show_instruction` command for continuous coaching without chat interaction.
+- Added a timestamped 10 Hz ring-buffer flight recorder with start, stop, clear,
+  status, and export actions plus takeoff/touchdown/crash event markers.
+- Added four deterministic regression evaluations: stable level flight, a
+  one-second trim disturbance, a 15 kt crosswind takeoff, and scored runway
+  landing. The trim disturbance remains bounded with the existing aerodynamic
+  coefficients, so no speculative pitch-model tuning was applied.
+- Browser QA verified the live recorder/telemetry, runway rendering, internal
+  `hold_heading` command, instructor subtitle, and zero console/page errors.
+
+## Context-sensitive ground zoom (2026-10-30)
+
+- Added a 6x minimum chart zoom while wheel contact is active, compared with
+  the normal 3x pilot-selected zoom.
+- Kept effective and requested zoom separate so ground zoom never overwrites
+  the pilot's saved airborne preference. Manual zoom can still go closer than
+  6x while on the ground.
+- Added a smooth configurable transition back to the requested zoom after
+  liftoff, plus `Ground minimum zoom` and `Ground zoom transition` settings in
+  the ASCII DISPLAY panel.
+- Text telemetry now reports effective zoom, requested zoom, and whether ground
+  zoom is active. Persistence stores the requested value rather than the
+  temporary ground value.
+- Automated checks pass: 74 tests and JavaScript syntax validation. Browser QA
+  verified 6x on the runway and restoration to 3x in an airborne scenario with
+  no console or page errors.

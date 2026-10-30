@@ -17,6 +17,9 @@ import { PhysicsEngine } from './core/physics.js';
 import { calculateLevelFlightTrim } from './core/trim.js';
 import { GroundSystem } from './core/ground.js';
 import { FlightEnvelopeSystem } from './core/flight-envelope.js';
+import { FlightController } from './core/flight-controller.js';
+import { FlightRecorder } from './core/flight-recorder.js';
+import { calculateFlightMetrics } from './core/flight-metrics.js';
 import { PersistenceManager } from './core/persistence.js';
 import { StallWarningPlayer } from './audio/stall-warning.js';
 import { ChartRenderer } from './rendering/chart.js';
@@ -25,6 +28,7 @@ import { InstrumentRenderer } from './rendering/instruments.js';
 import { EnergyDiagram } from './rendering/energy-diagram.js';
 import { ConfigurationPanel } from './ui/configuration-panel.js';
 import { HelpPanel } from './ui/help-panel.js';
+import { InstructorOverlay } from './ui/instructor-overlay.js';
 import { InputHandler } from './controls/input.js';
 import { WindModel } from './navigation/wind.js';
 import { VORNavigation } from './navigation/vor.js';
@@ -106,6 +110,9 @@ class FlightSimulator {
 
     // Input
     this.input = new InputHandler(this.controls, this.chart, null, this, this.vectors);
+    this.flightController = new FlightController(this);
+    this.flightRecorder = new FlightRecorder();
+    this.instructorOverlay = new InstructorOverlay();
 
     // Full runtime configuration console
     this.configPanel = new ConfigurationPanel(this);
@@ -139,6 +146,7 @@ class FlightSimulator {
     // Flight timer
     this.flightTime = 0; // seconds
     this.flightStartTime = performance.now();
+    this.simulationClockMode = 'foreground';
 
     // Display controls
     this.showControls();
@@ -148,9 +156,38 @@ class FlightSimulator {
 
     console.log('Starting game loop...');
     requestAnimationFrame(() => this.gameLoop());
+    this.setupBackgroundClock();
 
     // Handle window resize
     window.addEventListener('resize', () => this.resizeCanvas());
+  }
+
+  setupBackgroundClock() {
+    const source = `setInterval(() => postMessage(performance.now()), 50);`;
+    const workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
+    this.clockWorker = new Worker(workerUrl);
+    URL.revokeObjectURL(workerUrl);
+    this.backgroundClockTime = null;
+    this.clockWorker.addEventListener('message', event => {
+      if (!document.hidden || !this.running) {
+        this.backgroundClockTime = event.data;
+        return;
+      }
+      const elapsedMs = this.backgroundClockTime === null
+        ? 0
+        : Math.max(0, Math.min(1000, event.data - this.backgroundClockTime));
+      this.backgroundClockTime = event.data;
+      this.simulationClockMode = 'background-worker';
+      if (elapsedMs > 0) {
+        this.advanceSimulation(elapsedMs, { processInput: false, render: false });
+      }
+    });
+    document.addEventListener('visibilitychange', () => {
+      this.lastTime = performance.now();
+      this.accumulator = 0;
+      this.backgroundClockTime = null;
+      this.simulationClockMode = document.hidden ? 'background-worker' : 'foreground';
+    });
   }
 
   resizeCanvas() {
@@ -253,10 +290,85 @@ class FlightSimulator {
     console.log('');
   }
 
+  stepSimulation() {
+    const substepDt = this.dt / this.physicsSubsteps;
+    for (let i = 0; i < this.physicsSubsteps; i++) {
+      if (typeof this.wind.updateDynamic === 'function') {
+        this.wind.updateDynamic(substepDt);
+      }
+      this.flightController.update(substepDt);
+      this.lastForces = this.physics.update(substepDt);
+      this.groundState = this.physics.lastGroundState ?? this.groundState;
+      this.envelopeState = this.envelope.update(
+        substepDt,
+        this.state,
+        this.controls,
+        this.lastForces,
+        this.groundState
+      );
+      this.handleGroundEvent(this.groundState?.event);
+    }
+
+    this.energyDiagram.update(this.state, this.dt);
+    this.flightTime += this.dt;
+    this.flightRecorder.update(this.flightTime, () => this.createRecorderSample());
+    this.updateMapZoom(this.dt);
+    this.chart.setCenter(this.state.position.lat, this.state.position.lon);
+    this.debugInterval += this.dt;
+    if (this.debugMode && this.debugInterval >= CONFIG.DEBUG_OUTPUT_INTERVAL / 1000) {
+      this.debugInterval = 0;
+      console.log('FLIGHT DEBUG', this.createRecorderSample());
+    }
+  }
+
+  updateMapZoom(dt) {
+    return this.chart.updateContextZoom(
+      this.groundState?.contact ? CONFIG.GROUND_MAP_ZOOM : null,
+      dt,
+      CONFIG.GROUND_ZOOM_TRANSITION_RATE
+    );
+  }
+
+  createRecorderSample() {
+    const metrics = calculateFlightMetrics(this);
+    return {
+      latitude: this.state.position.lat,
+      longitude: this.state.position.lon,
+      altitudeMslFt: this.state.position.altitude,
+      aglFt: this.groundState?.aglFt ?? null,
+      iasKt: this.state.getIAS(),
+      groundSpeedKt: metrics.groundSpeedKt,
+      groundTrackDeg: metrics.groundTrackDeg,
+      flightPathAngleDeg: metrics.flightPathAngleDeg,
+      verticalSpeedFpm: this.state.getClimbRate(),
+      headingDeg: (this.state.orientation.yaw * 180 / Math.PI + 360) % 360,
+      pitchDeg: this.state.orientation.pitch * 180 / Math.PI,
+      rollDeg: this.state.orientation.roll * 180 / Math.PI,
+      turnRateDegPerSecond: metrics.turnRateDegPerSecond,
+      sideslipDeg: metrics.sideslipDeg,
+      controls: {
+        elevator: this.controls.elevator,
+        aileron: this.controls.aileron,
+        rudder: this.controls.rudder,
+        throttle: this.controls.throttle,
+        flaps: this.controls.flaps
+      },
+      controlOwner: this.flightController.owner,
+      controllerMode: this.flightController.mode,
+      groundPhase: this.groundState?.phase ?? null
+    };
+  }
+
   gameLoop() {
     const currentTime = performance.now();
     const frameTime = (currentTime - this.lastTime) / 1000; // Convert to seconds
     this.lastTime = currentTime;
+
+    if (document.hidden) {
+      if (this.running) requestAnimationFrame(() => this.gameLoop());
+      return;
+    }
+    this.simulationClockMode = 'foreground';
 
     // Fixed timestep with accumulator
     this.accumulator += frameTime;
@@ -273,95 +385,13 @@ class FlightSimulator {
     // Update physics with fixed timestep (skip if paused)
     if (!this.paused && this.worldReady) {
       while (this.accumulator >= this.dt) {
-        const substepDt = this.dt / this.physicsSubsteps;
-        for (let i = 0; i < this.physicsSubsteps; i++) {
-          // Update dynamic wind if available
-          if (typeof this.wind.updateDynamic === 'function') {
-            this.wind.updateDynamic(substepDt);
-          }
-
-          this.lastForces = this.physics.update(substepDt);
-          this.groundState = this.physics.lastGroundState ?? this.groundState;
-          this.envelopeState = this.envelope.update(
-            substepDt,
-            this.state,
-            this.controls,
-            this.lastForces,
-            this.groundState
-          );
-          this.handleGroundEvent(this.groundState?.event);
-        }
-
-        // Update energy diagram
-        this.energyDiagram.update(this.state, this.dt);
-
-        // Update flight time
-        this.flightTime += this.dt;
-
-      // Center chart on aircraft
-      this.chart.setCenter(this.state.position.lat, this.state.position.lon);
-
-      // Debug output (every 2 seconds)
-      this.debugInterval += this.dt;
-      if (this.debugMode && this.debugInterval >= CONFIG.DEBUG_OUTPUT_INTERVAL / 1000) {
-        this.debugInterval = 0;
-        console.log('=== DEBUG ===');
-        console.log('Altitude:', Math.round(this.state.position.altitude), 'ft');
-        console.log('IAS:', Math.round(this.state.getIAS()), 'kt');
-        console.log('Heading:', Math.round((this.state.orientation.yaw * 180 / Math.PI + 360) % 360), '°');
-        console.log('Pitch:', (this.state.orientation.pitch * 180 / Math.PI).toFixed(1), '°',
-                    '| Rate:', (this.state.angularVelocity.q * 180 / Math.PI).toFixed(2), '°/s');
-        console.log('Roll:', (this.state.orientation.roll * 180 / Math.PI).toFixed(1), '°');
-        console.log('Velocities (body): u=', this.state.velocity.u.toFixed(1),
-                    'v=', this.state.velocity.v.toFixed(1),
-                    'w=', this.state.velocity.w.toFixed(1), 'm/s');
-        console.log('Elevator:', (this.controls.elevator * 100).toFixed(0), '% | Trim:', (this.input.getTrimDisplay() * 100).toFixed(0), '%');
-        console.log('Aileron:', (this.controls.aileron * 100).toFixed(0), '%');
-        console.log('Rudder:', (this.controls.rudder * 100).toFixed(0), '%');
-        console.log('Throttle:', (this.controls.throttle * 100).toFixed(0), '%');
-        console.log('Flaps:', Math.round(this.controls.flaps * this.specs.flapMaxDeg), '°');
-        if (this.lastForces) {
-          const V_total = this.state.getVelocityMagnitude();
-          const V_kts = Math.round(V_total * 1.94384);
-
-          console.log('--- AERODYNAMICS ---');
-          console.log('Velocity:', V_kts, 'kt (', V_total.toFixed(1), 'm/s)');
-          console.log('Alpha (AOA):', (this.lastForces.aerodynamic.alpha * 180 / Math.PI).toFixed(1), '°');
-          console.log('Cl:', this.lastForces.aerodynamic.Cl.toFixed(3));
-          console.log('Dynamic Pressure (q):', Math.round(this.lastForces.aerodynamic.q), 'Pa');
-
-          console.log('--- FORCES ---');
-          console.log('Lift:', Math.round(this.lastForces.components.lift), 'N');
-          console.log('Weight:', Math.round(this.lastForces.components.weight), 'N');
-          console.log('Thrust:', Math.round(this.lastForces.components.thrust), 'N');
-          console.log('Drag:', Math.round(this.lastForces.components.drag), 'N');
-
-          const liftVsWeight = ((this.lastForces.components.lift / this.lastForces.components.weight - 1) * 100).toFixed(1);
-          console.log('Lift/Weight:', liftVsWeight > 0 ? '+' + liftVsWeight : liftVsWeight, '%');
-
-          // Calculate net vertical force in earth frame
-          const theta = this.state.orientation.pitch;
-          const netVertical = -this.lastForces.body.Z * Math.cos(theta) + this.lastForces.body.X * Math.sin(theta);
-          console.log('Net Vertical Force:', Math.round(netVertical), 'N', netVertical > 0 ? '↑ CLIMBING' : '↓ DESCENDING');
-
-          console.log('--- STABILITY CHECK ---');
-          console.log('Pitch Rate (q):', (this.state.angularVelocity.q * 180 / Math.PI).toFixed(3), '°/s');
-          console.log('Pitch Accel:', (this.lastForces.moments?.M / this.specs.Iyy * 180 / Math.PI).toFixed(3), '°/s²');
-
-          if (Math.abs(this.state.angularVelocity.q) > 0.5) {
-            console.warn('⚠️ HIGH PITCH RATE - POSSIBLE INSTABILITY');
-          }
-          if (Math.abs(this.lastForces.components.lift - 10232) > 3000) {
-            console.warn('⚠️ LIFT FAR FROM EQUILIBRIUM');
-          }
-        }
+        this.stepSimulation();
+        this.accumulator -= this.dt;
       }
-
-      this.accumulator -= this.dt;
-    }
     } else {
       // When paused, clear accumulator to prevent jump on unpause
       this.accumulator = 0;
+      this.updateMapZoom(frameTime);
     }
 
     // Render (always render even when paused)
@@ -372,39 +402,25 @@ class FlightSimulator {
     }
   }
 
-  advanceTime(milliseconds) {
+  advanceSimulation(milliseconds, { processInput = true, render = true } = {}) {
     const steps = Math.max(1, Math.round(milliseconds / (this.dt * 1000)));
 
     for (let step = 0; step < steps; step++) {
-      this.input.update(this.dt);
+      if (processInput) this.input.update(this.dt);
       if (this.worldReady) this.persistence.update(this, this.dt);
       if (this.paused || !this.worldReady) continue;
-
-      const substepDt = this.dt / this.physicsSubsteps;
-      for (let i = 0; i < this.physicsSubsteps; i++) {
-        if (typeof this.wind.updateDynamic === 'function') {
-          this.wind.updateDynamic(substepDt);
-        }
-        this.lastForces = this.physics.update(substepDt);
-        this.groundState = this.physics.lastGroundState ?? this.groundState;
-        this.envelopeState = this.envelope.update(
-          substepDt,
-          this.state,
-          this.controls,
-          this.lastForces,
-          this.groundState
-        );
-        this.handleGroundEvent(this.groundState?.event);
-      }
-
-      this.energyDiagram.update(this.state, this.dt);
-      this.flightTime += this.dt;
+      this.stepSimulation();
     }
 
     this.chart.setCenter(this.state.position.lat, this.state.position.lon);
     this.lastTime = performance.now();
     this.accumulator = 0;
-    this.render();
+    if (render) this.render();
+  }
+
+  advanceTime(milliseconds) {
+    this.simulationClockMode = 'deterministic';
+    this.advanceSimulation(milliseconds);
   }
 
   retrimCurrentFlight() {
@@ -442,6 +458,8 @@ class FlightSimulator {
     this.lastForces = null;
     this.lastGroundEventSequence = null;
     this.envelopeState = this.envelope.reset();
+    this.flightController?.disengage('RESET — MANUAL CONTROL');
+    this.flightRecorder?.reset(0);
 
     if (CONFIG.INITIAL_START_MODE === 'runway' && this.ground) {
       const spawn = this.ground.spawnOnRunway(
@@ -459,6 +477,7 @@ class FlightSimulator {
         this.input.elevatorTrim = 0;
         this.initialTrim = null;
         this.groundState = this.ground.getStatus(this.state, this.controls);
+        this.updateMapZoom(1);
         this.chart.setCenter(this.state.position.lat, this.state.position.lon);
         return spawn;
       }
@@ -493,6 +512,7 @@ class FlightSimulator {
     this.initialTrim = trim;
     this.ground?.reset({ contact: false });
     this.groundState = this.ground?.getStatus(this.state, this.controls) ?? null;
+    this.updateMapZoom(1);
     this.chart.setCenter(0, 0);
     return trim;
   }
@@ -500,6 +520,7 @@ class FlightSimulator {
   handleGroundEvent(event) {
     if (!event || event.sequence === this.lastGroundEventSequence) return;
     this.lastGroundEventSequence = event.sequence;
+    this.flightRecorder?.addEvent(event.type, this.flightTime, event.report);
     if ((event.type === 'touchdown' || event.type === 'crash') && event.report) {
       this.persistence.recordLanding(event.report, this.flightTime);
       this.persistence.saveAutosave(this, { force: true });
@@ -552,6 +573,9 @@ class FlightSimulator {
         down: this.wind.windDown
       }
     );
+    const metrics = calculateFlightMetrics(this);
+    const controller = this.flightController.getState();
+    const recorder = this.flightRecorder.getStatus();
 
     return JSON.stringify({
       coordinateSystem: 'lat/lon degrees; altitude feet MSL; body velocity m/s (forward/right/down)',
@@ -566,7 +590,10 @@ class FlightSimulator {
         pitchLineVisible: CONFIG.SHOW_PITCH_INDICATOR,
         throttleIndicatorVisible: CONFIG.SHOW_THROTTLE_INDICATOR,
         vectorMode: this.vectors.vectorMode,
-        zoom: round(this.chart.zoom, 1)
+        zoom: round(this.chart.zoom, 1),
+        requestedZoom: round(this.chart.requestedZoom, 1),
+        groundZoomActive: this.groundState?.contact === true,
+        simulationClock: this.simulationClockMode
       },
       aircraft: {
         latitude: round(this.state.position.lat, 6),
@@ -574,6 +601,10 @@ class FlightSimulator {
         altitudeFt: round(this.state.position.altitude, 1),
         iasKt: round(this.state.getIAS(), 1),
         groundSpeedKt: round(getHorizontalSpeed(groundVelocity) * MS_TO_KNOTS, 1),
+        groundTrackDeg: round(metrics.groundTrackDeg, 1),
+        flightPathAngleDeg: round(metrics.flightPathAngleDeg, 1),
+        turnRateDegPerSecond: round(metrics.turnRateDegPerSecond, 2),
+        sideslipDeg: round(metrics.sideslipDeg, 1),
         verticalSpeedFpm: round(this.state.getClimbRate(), 1),
         headingDeg: round((toDegrees(this.state.orientation.yaw) + 360) % 360, 1),
         pitchDeg: round(toDegrees(this.state.orientation.pitch), 1),
@@ -585,6 +616,8 @@ class FlightSimulator {
         }
       },
       controls: {
+        owner: controller.owner,
+        mode: controller.mode,
         elevator: round(this.controls.elevator),
         aileron: round(this.controls.aileron),
         rudder: round(this.controls.rudder),
@@ -601,7 +634,20 @@ class FlightSimulator {
       navigation: {
         selectedVor: this.vorNav?.selectedVOR?.id ?? null,
         obsDeg: this.vorNav?.obs ?? null,
-        selectedAirport: this.airportNav?.selectedAirport?.id ?? null
+        selectedAirport: this.airportNav?.selectedAirport?.id ?? null,
+        activeRunway: metrics.activeRunwayId,
+        heightAboveSelectedAirportFt: metrics.heightAboveSelectedAirportFt === null
+          ? null
+          : round(metrics.heightAboveSelectedAirportFt, 1),
+        patternAltitudeMslFt: metrics.patternAltitudeMslFt === null
+          ? null
+          : round(metrics.patternAltitudeMslFt, 1),
+        runwayCenterlineDistanceMeters: metrics.runway === null
+          ? null
+          : round(metrics.runway.centerlineDistanceMeters, 1),
+        runwayCenterlineSignedMeters: metrics.runway === null
+          ? null
+          : round(metrics.runway.crossTrackMeters, 1)
       },
       ground: this.groundState ? {
         phase: this.groundState.phase,
@@ -612,6 +658,8 @@ class FlightSimulator {
         surfaceType: this.groundState.surfaceType,
         onRunway: this.groundState.onRunway,
         aglFt: round(this.groundState.aglFt, 1),
+        terrainElevationFt: round(this.groundState.terrainElevationFt, 1),
+        landingArmed: this.groundState.landingArmed,
         groundSpeedKt: round(this.groundState.groundSpeedKt, 1),
         brake: round(this.groundState.brake),
         message: this.groundState.message,
@@ -642,6 +690,9 @@ class FlightSimulator {
         presetCount: this.persistence.getPresetNames().length,
         landingCount: this.persistence.getLandingHistory().length
       },
+      autopilot: controller,
+      instructor: this.instructorOverlay.getState(this.flightTime),
+      recorder,
       forcesNewtons: components ? {
         lift: round(components.lift, 1),
         weight: round(components.weight, 1),
@@ -808,6 +859,14 @@ class FlightSimulator {
 
     // Draw crosshair (very last, on top of everything)
     this.input.drawCrosshair();
+
+    // Short in-world instructions remain visible without switching to chat.
+    this.instructorOverlay.draw(
+      this.chart.ctx,
+      this.canvas,
+      this.chart.palette,
+      this.flightTime
+    );
 
     // Draw pause indicator
     if (this.paused && !this.configPanel.isOpen && !this.showHelp) {
@@ -1116,10 +1175,26 @@ class FlightSimulator {
   }
 }
 
-// Start simulation when page loads
-window.addEventListener('DOMContentLoaded', () => {
+// Start even when a host injects the module after DOMContentLoaded.
+function startSimulator() {
   const simulator = new FlightSimulator();
   window.flightSimulator = simulator;
   window.render_game_to_text = () => simulator.renderGameToText();
   window.advanceTime = milliseconds => simulator.advanceTime(milliseconds);
-});
+
+  if (new URLSearchParams(window.location.search).get('mcp') === '1') {
+    import('./integrations/mcp-bridge.js')
+      .then(({ McpGameBridge }) => {
+        const bridge = new McpGameBridge(simulator);
+        window.flightSimulatorMcp = bridge;
+        bridge.connect();
+      })
+      .catch(error => console.error('Could not start MCP game bridge:', error));
+  }
+}
+
+if (document.readyState === 'loading') {
+  window.addEventListener('DOMContentLoaded', startSimulator, { once: true });
+} else {
+  startSimulator();
+}
