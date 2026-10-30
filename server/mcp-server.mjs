@@ -97,7 +97,26 @@ httpServer.on('upgrade', (request, socket, head) => {
     webSocketServer.emit('connection', ws, request);
   });
 });
-webSocketServer.on('connection', socket => game.attach(socket));
+webSocketServer.on('connection', socket => {
+  const authorizeVisibleGame = rawMessage => {
+    let message;
+    try {
+      message = JSON.parse(rawMessage.toString());
+    } catch {
+      socket.close(1008, 'Expected game hello');
+      return;
+    }
+
+    if (message.type !== 'hello' || message.visibility !== 'visible') {
+      socket.close(1008, 'Only the visible game tab may attach');
+      return;
+    }
+
+    socket.off('message', authorizeVisibleGame);
+    game.attach(socket);
+  };
+  socket.on('message', authorizeVisibleGame);
+});
 
 function subsetState(keys) {
   const state = game.requireState();

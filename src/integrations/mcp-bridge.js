@@ -11,6 +11,11 @@ export class McpGameBridge {
     this.reconnectTimer = null;
     this.reconnectDelay = 500;
     this.status = 'connecting';
+    this.visibilityHandler = () => {
+      if (document.hidden) this.disconnect();
+      else this.connect();
+    };
+    document.addEventListener('visibilitychange', this.visibilityHandler);
   }
 
   get url() {
@@ -19,6 +24,10 @@ export class McpGameBridge {
   }
 
   connect() {
+    if (document.hidden) {
+      this.status = 'inactive';
+      return;
+    }
     if (this.socket && this.socket.readyState <= WebSocket.OPEN) return;
     this.status = 'connecting';
     this.socket = new WebSocket(this.url);
@@ -26,14 +35,25 @@ export class McpGameBridge {
     this.socket.addEventListener('open', () => {
       this.status = 'connected';
       this.reconnectDelay = 500;
-      this.send({ type: 'hello', app: 'flight-sim', apiVersion: 2 });
+      this.send({
+        type: 'hello',
+        app: 'flight-sim',
+        apiVersion: 2,
+        visibility: document.visibilityState
+      });
       this.publishState();
       clearInterval(this.stateTimer);
       this.stateTimer = setInterval(() => this.publishState(), STATE_INTERVAL_MS);
     });
 
     this.socket.addEventListener('message', event => this.handleMessage(event.data));
-    this.socket.addEventListener('close', () => this.scheduleReconnect());
+    this.socket.addEventListener('close', () => {
+      if (document.hidden) {
+        this.status = 'inactive';
+        return;
+      }
+      this.scheduleReconnect();
+    });
     this.socket.addEventListener('error', () => {
       this.status = 'disconnected';
     });
@@ -90,8 +110,9 @@ export class McpGameBridge {
     clearTimeout(this.reconnectTimer);
     this.stateTimer = null;
     this.reconnectTimer = null;
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = null;
-    this.status = 'disconnected';
+    socket?.close();
+    this.status = document.hidden ? 'inactive' : 'disconnected';
   }
 }

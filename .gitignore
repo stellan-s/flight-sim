@@ -8,6 +8,7 @@ node_modules/
 brag-output*/
 output/
 coverage/
+dist/
 *.log
 .DS_Store
 

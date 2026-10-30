@@ -385,3 +385,21 @@ Implement all seven approved simulator improvements while preserving the existin
   steering correction. Text telemetry matched both views with no console or
   page errors.
 - Current automated result: 83 tests plus JavaScript syntax validation passing.
+
+## Persistent instructor subtitle visibility (2026-10-30)
+
+- Diagnosed an MCP/browser reconnect immediately after an instruction update;
+  the new browser runtime had an empty overlay until the next instructor poll.
+- Reduced the external trim instructor refresh interval to three seconds and
+  retained a 60-second instruction lifetime so reloads cannot create a long gap.
+- Replaced the easy-to-miss halo-only instructor line with a borderless inverse
+  subtitle strip. Long instructions wrap to two centered lines and remain
+  legible over runways, ILS lines, and force vectors.
+- Added regression coverage for contrast, wrapping, and expiry behavior.
+- Found that two open `?mcp=1` tabs repeatedly replaced each other's game
+  socket, so instructions and control commands alternated between two aircraft.
+  The browser bridge now disconnects while hidden and identifies its visibility
+  during the handshake; the server accepts only the visible simulator tab.
+- Added a deterministic static production build and root `netlify.toml` so the
+  Git-connected Netlify site can build `dist/` from every push to `main`
+  without publishing server code, local configuration, or dependencies.
