@@ -363,3 +363,25 @@ Implement all seven approved simulator improvements while preserving the existin
 - Automated checks pass: 74 tests and JavaScript syntax validation. Browser QA
   verified 6x on the runway and restoration to 3x in an airborne scenario with
   no console or page errors.
+
+## Full-screen ILS guidance (2026-10-30)
+
+- Added runway-threshold Instrument Landing System guidance for the selected
+  airport and wind-selected active runway.
+- Added a full-height localizer line, full-width glideslope line, center-scale
+  ticks, capture colors, target altitude, range, and ASCII approach status.
+- Added configurable course width, glide angle, range, threshold crossing
+  height, and needle travel to the ASCII DISPLAY settings.
+- Added an `I` keyboard toggle and an ILS help section. `L` continues to choose
+  the airport that supplies the approach.
+- Exposed localizer/glideslope errors, dots, target altitude, height error, and
+  capture state through text telemetry and MCP navigation state. MCP
+  `set_display` can also show or hide the ILS layer.
+- Added deterministic geometry and renderer coverage for centered, lateral,
+  vertical, beyond-threshold, and out-of-range cases.
+- Browser QA placed the aircraft five nautical miles from KABC runway 18. A
+  centered three-degree final produced `ILS CAPTURED`; a 450 m left / 400 ft
+  high case moved the localizer right and glideslope down, matching the
+  steering correction. Text telemetry matched both views with no console or
+  page errors.
+- Current automated result: 83 tests plus JavaScript syntax validation passing.

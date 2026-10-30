@@ -61,6 +61,11 @@ explicit link—to open the full-resolution, silent MP4 file.
   - Radial visualization and course guidance
   - Morse code station identifiers with audio playback
 
+- **ILS Approach Guidance**: Full-screen precision approach display
+  - Runway-threshold localizer for lateral centerline guidance
+  - Configurable three-degree glideslope with target altitude and capture state
+  - Theme-aware needles, ASCII status, telemetry, MCP access, and an `I` toggle
+
 - **Aviation Chart Rendering**: Professional-style navigation charts
   - 14 live themes, with black and white as the default
   - Paper, night, phosphor, amber, GitHub, Nord, Dracula, Solarized, Gruvbox,
@@ -239,7 +244,9 @@ The timestamped recorder samples the live simulation at 10 Hz and can be
 started, stopped, cleared, inspected, or exported through `flight_recorder`.
 Telemetry includes ground track, flight-path angle, turn rate, sideslip,
 height above the selected airport, pattern altitude MSL, and runway-centerline
-distance. Outside airport surfaces, AGL uses a continuous terrain estimate
+distance. The navigation state also exposes localizer and glideslope errors,
+dot deflections, target altitude, and capture state for the selected airport's
+active runway. Outside airport surfaces, AGL uses a continuous terrain estimate
 interpolated from the chart's known field elevations; adding a real terrain
 dataset later will improve this estimate without changing the telemetry API.
 
@@ -314,6 +321,12 @@ The default session starts stationary on runway 18 at KABC. Apply power with W,
 rotate with Arrow Down, and hold B to brake after reducing power with S. Start
 mode, airport, runway end, ground friction, steering, rotation, and landing
 thresholds are all editable in the `SESSION` and `GROUND OPS` groups.
+
+Press `L` to select an airport and activate its wind-selected runway guidance.
+The vertical localizer line and horizontal glideslope line then span the screen;
+fly toward each line to center it. Press `I` to hide or restore the Instrument
+Landing System (ILS) layer. Its course width, glideslope angle, range, threshold
+crossing height, and screen travel are editable in the `DISPLAY` group.
 
 When autosave is enabled, configuration changes are stored in browser-local
 storage and restored on the next load. The `PERSISTENCE` group can save, load,

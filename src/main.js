@@ -26,6 +26,7 @@ import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
 import { InstrumentRenderer } from './rendering/instruments.js';
 import { EnergyDiagram } from './rendering/energy-diagram.js';
+import { IlsOverlayRenderer } from './rendering/ils-overlay.js';
 import { drawAsciiText } from './rendering/ascii-hud.js';
 import { ConfigurationPanel } from './ui/configuration-panel.js';
 import { HelpPanel } from './ui/help-panel.js';
@@ -94,6 +95,7 @@ class FlightSimulator {
     this.vectors = new VectorRenderer(this.chart);
     this.instruments = new InstrumentRenderer(this.chart);
     this.energyDiagram = new EnergyDiagram(this.chart);
+    this.ilsOverlay = new IlsOverlayRenderer(this.chart);
 
     // Wind model with dynamic variations
     this.wind = new WindModel();
@@ -250,6 +252,7 @@ class FlightSimulator {
     console.log('NAVIGATION CONTROLS:');
     console.log('  ⭐ Right-Click or Ctrl+Click: Tune VOR on chart ⭐');
     console.log('  Q/E: Adjust OBS (course selector) ±10°');
+    console.log('  L: Select airport | I: Toggle full-screen ILS guidance');
     console.log('  N: North-Up (fixed map) | T: Track-Up (map rotates with plane)');
     console.log('  Note: Wind arrows rotate with map in Track-Up mode');
     console.log('  Mouse: Full-screen crosshair for precision');
@@ -281,6 +284,7 @@ class FlightSimulator {
     console.log('  Left: VOR selection panel');
     console.log('  Bottom-left: Navigation data (TAS, GS, drift)');
     console.log('  Bottom-right: CDI instrument');
+    console.log('  Full screen: ILS localizer and glideslope for selected airport');
     console.log('  Left side: VOR selection panel');
     console.log('  Center screen: Black line (turn to center = on course)');
     console.log('  Chart: Green=OBS/center, Blue=radial, Black=your offset');
@@ -590,6 +594,7 @@ class FlightSimulator {
         mapTheme: this.chart.theme,
         pitchLineVisible: CONFIG.SHOW_PITCH_INDICATOR,
         throttleIndicatorVisible: CONFIG.SHOW_THROTTLE_INDICATOR,
+        ilsOverlayVisible: CONFIG.SHOW_ILS_OVERLAY,
         vectorMode: this.vectors.vectorMode,
         zoom: round(this.chart.zoom, 1),
         requestedZoom: round(this.chart.requestedZoom, 1),
@@ -648,7 +653,29 @@ class FlightSimulator {
           : round(metrics.runway.centerlineDistanceMeters, 1),
         runwayCenterlineSignedMeters: metrics.runway === null
           ? null
-          : round(metrics.runway.crossTrackMeters, 1)
+          : round(metrics.runway.crossTrackMeters, 1),
+        ils: metrics.ils?.available ? {
+          status: metrics.ils.status,
+          airportId: metrics.ils.airportId,
+          runwayId: metrics.ils.runwayId,
+          runwayHeadingDeg: round(metrics.ils.runwayHeadingDeg, 1),
+          distanceToThresholdNm: round(metrics.ils.distanceToThresholdNm, 2),
+          crossTrackMeters: round(metrics.ils.crossTrackMeters, 1),
+          localizerErrorDeg: round(metrics.ils.localizerErrorDeg, 2),
+          localizerDots: round(metrics.ils.localizerDots, 2),
+          glideslopeErrorDeg: round(metrics.ils.glideslopeErrorDeg, 2),
+          glideslopeDots: round(metrics.ils.glideslopeDots, 2),
+          targetAltitudeMslFt: round(metrics.ils.targetAltitudeMslFt, 1),
+          heightErrorFt: round(metrics.ils.heightErrorFt, 1),
+          localizerCaptured: metrics.ils.localizerCaptured,
+          glideslopeCaptured: metrics.ils.glideslopeCaptured,
+          captured: metrics.ils.captured
+        } : {
+          status: 'UNAVAILABLE',
+          reason: metrics.ils?.reason ?? 'SELECT AIRPORT',
+          airportId: metrics.ils?.airportId ?? null,
+          runwayId: metrics.ils?.runwayId ?? null
+        }
       },
       ground: this.groundState ? {
         phase: this.groundState.phase,
@@ -819,6 +846,9 @@ class FlightSimulator {
 
     // Draw the roll-rotated pitch horizon beneath HUD text and vector labels.
     this.instruments.drawAttitudeIndicator(this.state);
+
+    // Full-screen localizer and glideslope needles stay beneath force vectors.
+    this.ilsOverlay.draw(calculateFlightMetrics(this).ils);
 
     this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
 

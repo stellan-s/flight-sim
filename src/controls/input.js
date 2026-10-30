@@ -354,6 +354,13 @@ export class InputHandler {
       this.keys['V'] = false;
     }
 
+    // Instrument Landing System overlay (I key) - works when paused
+    if (this.simulator && (this.keys['i'] || this.keys['I'])) {
+      this.simulator.config.SHOW_ILS_OVERLAY = !this.simulator.config.SHOW_ILS_OVERLAY;
+      this.keys['i'] = false;
+      this.keys['I'] = false;
+    }
+
     // Zoom presets - works when paused
     if (this.keys['1']) {
       this.chart.setZoom(1.0);

@@ -83,6 +83,15 @@ export const CONFIG = {
   THROTTLE_INDICATOR_WIDTH: 14,
   THROTTLE_INDICATOR_HEIGHT: 116,
 
+  // Instrument Landing System (ILS) overlay
+  SHOW_ILS_OVERLAY: true,
+  ILS_GLIDE_PATH_DEG: 3.0,
+  ILS_LOCALIZER_FULL_SCALE_DEG: 2.5,
+  ILS_GLIDESLOPE_FULL_SCALE_DEG: 0.7,
+  ILS_MAX_RANGE_NM: 18,
+  ILS_THRESHOLD_CROSSING_HEIGHT_FT: 50,
+  ILS_OVERLAY_TRAVEL: 0.28,
+
   // Debug mode
   DEBUG_MODE: false,               // Enable/disable debug logging
   DEBUG_OUTPUT_INTERVAL: 2000,     // ms between debug outputs

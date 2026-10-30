@@ -56,9 +56,18 @@ export class HelpPanel {
           ['Q / E', 'Adjust OBS course by 10 deg'],
           ['L', 'Cycle direct-to airports'],
           ['SHIFT + L', 'Clear direct-to airport'],
+          ['I', 'Show or hide ILS localizer / glideslope'],
           ['N / T', 'North-up / track-up chart'],
           ['MOUSE WHEEL', 'Zoom chart'],
           ['1 / 2 / 3 / 4', 'Zoom presets']
+        ]
+      },
+      {
+        label: 'ILS APPROACH',
+        paragraphs: [
+          'ILS means Instrument Landing System. Select an airport with L. The active runway is chosen from the wind and its threshold drives both needles.',
+          'The dashed vertical localizer line gives lateral steering: fly toward the line. The dotted horizontal glideslope line gives vertical steering: fly toward the line.',
+          'The center ticks show half-scale and full-scale deflection. Green guidance means captured; I toggles the full-screen layer.'
         ]
       },
       {

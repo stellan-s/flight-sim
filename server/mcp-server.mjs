@@ -336,12 +336,13 @@ registerTool(mcp, 'tune_vor', {
 
 registerTool(mcp, 'set_display', {
   title: 'Set display',
-  description: 'Change theme, vector mode, map rotation, or zoom in the live game.',
+  description: 'Change theme, vector mode, map rotation, zoom, or the full-screen ILS overlay in the live game.',
   inputSchema: {
     theme: z.string().optional(),
     vectorMode: z.enum(['all', 'energy', 'nav']).optional(),
     rotationMode: z.enum(['north-up', 'track-up']).optional(),
-    zoom: z.number().positive().optional()
+    zoom: z.number().positive().optional(),
+    ilsOverlayVisible: z.boolean().optional()
   }
 }, args => game.command('set_display', args));
 

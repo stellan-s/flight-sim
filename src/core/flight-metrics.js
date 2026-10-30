@@ -1,5 +1,7 @@
 import { calculateGroundVelocity, getHorizontalSpeed } from '../utils/coordinates.js';
 import { MS_TO_KNOTS } from '../utils/constants.js';
+import { CONFIG } from '../config.js';
+import { calculateIlsGuidance } from '../navigation/ils.js';
 
 const METERS_PER_DEGREE = 111320;
 const RAD_TO_DEG = 180 / Math.PI;
@@ -64,6 +66,13 @@ export function calculateFlightMetrics(simulator) {
   }
   const patternAltitudeAglFt = runway?.trafficPattern?.altitude ?? 1000;
   const runwayGeometry = calculateRunwayGeometry(state.position, airport, runway);
+  const ils = calculateIlsGuidance(state.position, airport, runway, {
+    glidePathDeg: CONFIG.ILS_GLIDE_PATH_DEG,
+    localizerFullScaleDeg: CONFIG.ILS_LOCALIZER_FULL_SCALE_DEG,
+    glideslopeFullScaleDeg: CONFIG.ILS_GLIDESLOPE_FULL_SCALE_DEG,
+    maxRangeNm: CONFIG.ILS_MAX_RANGE_NM,
+    thresholdCrossingHeightFt: CONFIG.ILS_THRESHOLD_CROSSING_HEIGHT_FT
+  });
 
   return {
     groundVelocity,
@@ -82,6 +91,7 @@ export function calculateFlightMetrics(simulator) {
       : null,
     activeRunwayId: runway?.id ?? null,
     activeRunwayHeadingDeg: runway?.heading ?? null,
-    runway: runwayGeometry
+    runway: runwayGeometry,
+    ils
   };
 }

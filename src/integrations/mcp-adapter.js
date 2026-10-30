@@ -284,7 +284,7 @@ export class FlightSimulatorMcpAdapter {
     );
   }
 
-  setDisplay({ theme, vectorMode, rotationMode, zoom } = {}) {
+  setDisplay({ theme, vectorMode, rotationMode, zoom, ilsOverlayVisible } = {}) {
     const sim = this.simulator;
     if (theme !== undefined && !sim.chart.setTheme(String(theme))) {
       throw new Error(`Unknown theme: ${theme}`);
@@ -302,13 +302,15 @@ export class FlightSimulatorMcpAdapter {
       sim.chart.setRotationMode(rotationMode);
     }
     if (Number.isFinite(zoom)) sim.chart.setZoom(zoom);
+    if (typeof ilsOverlayVisible === 'boolean') CONFIG.SHOW_ILS_OVERLAY = ilsOverlayVisible;
     sim.render();
     return {
       theme: sim.chart.theme,
       vectorMode: sim.vectors.vectorMode,
       rotationMode: sim.chart.rotationMode,
       zoom: sim.chart.zoom,
-      requestedZoom: sim.chart.requestedZoom
+      requestedZoom: sim.chart.requestedZoom,
+      ilsOverlayVisible: CONFIG.SHOW_ILS_OVERLAY
     };
   }
 
