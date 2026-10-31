@@ -150,6 +150,17 @@ test('plus cycles the live map theme from the display category', () => {
   assert.equal(panel.getState().selectedValue, 'night');
 });
 
+test('display settings expose moment arc magnitude scaling', () => {
+  const simulator = makeSimulator();
+  const panel = new ConfigurationPanel(simulator);
+  const display = panel.getCategories().find(category => category.id === 'display');
+  const labels = display.items.map(item => item.label);
+
+  assert.ok(labels.includes('Moment full scale'));
+  assert.ok(labels.includes('Moment minimum sweep'));
+  assert.ok(labels.includes('Moment maximum sweep'));
+});
+
 test('configuration console renders with the active chart palette', () => {
   const simulator = makeSimulator();
   const panel = new ConfigurationPanel(simulator);

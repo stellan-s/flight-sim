@@ -403,3 +403,17 @@ Implement all seven approved simulator improvements while preserving the existin
 - Added a deterministic static production build and root `netlify.toml` so the
   Git-connected Netlify site can build `dist/` from every push to `main`
   without publishing server code, local configuration, or dependencies.
+
+## Magnitude-scaled moment vectors (2026-10-31)
+
+- Replaced the fixed-length L/M/N circles with curved arrows whose sweep grows
+  with roll, pitch, and yaw moment magnitude and whose direction follows the
+  moment sign.
+- Moment labels now include signed values in N·m. The top-right diagnostic row
+  identifies the same unit explicitly.
+- Added live ASCII settings for full-scale moment and minimum/maximum arc sweep.
+- Added focused regression coverage for magnitude growth, saturation, sign,
+  near-zero suppression, and label formatting.
+- Browser QA verified signed L/M/N labels and distinct curved arrows at rest and
+  under combined elevator, aileron, and rudder input with no console errors.
+- Current automated result: 89 tests, syntax validation, and static build pass.

@@ -621,6 +621,15 @@ export class ConfigurationPanel {
           value => { sim.vectors.vectorMode = value; }, ['all', 'energy', 'nav']),
         numericProperty(CONFIG, 'FORCE_VECTOR_SCALE', 'Force vector scale', { step: 0.005, min: 0, max: 10, precision: 3 }),
         numericProperty(CONFIG, 'VELOCITY_VECTOR_SCALE', 'Velocity vector scale', { step: 0.1, min: 0, max: 100, precision: 1 }),
+        numericProperty(CONFIG, 'MOMENT_VECTOR_FULL_SCALE_NM', 'Moment full scale', {
+          step: 1000, min: 100, max: 1000000, unit: 'N·m'
+        }),
+        numericProperty(CONFIG, 'MOMENT_VECTOR_MIN_SWEEP_DEG', 'Moment minimum sweep', {
+          step: 1, min: 0, max: 359, unit: 'deg'
+        }),
+        numericProperty(CONFIG, 'MOMENT_VECTOR_MAX_SWEEP_DEG', 'Moment maximum sweep', {
+          step: 5, min: 1, max: 359, unit: 'deg'
+        }),
         numericProperty(CONFIG, 'VOR_RADIAL_LENGTH_PIXELS', 'VOR radial length', { step: 100, min: 0, max: 100000, unit: 'px' }),
         heading('INSTRUMENTS / LAYOUT'),
         boolItem('Viewport pitch line', () => CONFIG.SHOW_PITCH_INDICATOR,

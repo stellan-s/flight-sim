@@ -60,6 +60,9 @@ export const CONFIG = {
   // Force vector visualization
   FORCE_VECTOR_SCALE: 0.02,      // Scale for force arrows
   VELOCITY_VECTOR_SCALE: 2,      // Scale for velocity arrows
+  MOMENT_VECTOR_FULL_SCALE_NM: 20000, // Moment that fills a curved arrow
+  MOMENT_VECTOR_MIN_SWEEP_DEG: 18,    // Smallest visible non-zero moment arc
+  MOMENT_VECTOR_MAX_SWEEP_DEG: 300,   // Arc sweep at or above full scale
 
   // VOR visualization
   VOR_RADIAL_LENGTH_PIXELS: 2000,

@@ -12,6 +12,32 @@ import {
   signedAsciiBar
 } from './ascii-hud.js';
 
+const DEG_TO_RAD = Math.PI / 180;
+const MOMENT_VISIBILITY_THRESHOLD_NM = 0.1;
+
+export function calculateMomentSweep(moment, {
+  fullScale = CONFIG.MOMENT_VECTOR_FULL_SCALE_NM,
+  minSweepDeg = CONFIG.MOMENT_VECTOR_MIN_SWEEP_DEG,
+  maxSweepDeg = CONFIG.MOMENT_VECTOR_MAX_SWEEP_DEG
+} = {}) {
+  if (!Number.isFinite(moment) || Math.abs(moment) < MOMENT_VISIBILITY_THRESHOLD_NM) {
+    return 0;
+  }
+
+  const safeFullScale = Math.max(MOMENT_VISIBILITY_THRESHOLD_NM, Math.abs(fullScale));
+  const minimum = Math.max(0, Math.min(359, minSweepDeg));
+  const maximum = Math.max(minimum, Math.min(359, maxSweepDeg));
+  const ratio = Math.min(1, Math.abs(moment) / safeFullScale);
+  const sweep = (minimum + (maximum - minimum) * ratio) * DEG_TO_RAD;
+  return Math.sign(moment) * sweep;
+}
+
+export function formatMomentLabel(label, moment) {
+  const magnitude = Math.abs(moment);
+  const value = magnitude < 10 ? magnitude.toFixed(1) : String(Math.round(magnitude));
+  return `${label} ${moment < 0 ? '-' : '+'}${value} N·m`;
+}
+
 export class VectorRenderer {
   constructor(chartRenderer) {
     this.chart = chartRenderer;
@@ -189,12 +215,12 @@ export class VectorRenderer {
   }
 
   drawMomentArrow(state, moment, label, color, radius, startAngle) {
-    if (!Number.isFinite(moment) || Math.abs(moment) < 0.1) return;
+    const sweep = calculateMomentSweep(moment);
+    if (sweep === 0) return;
 
     const ctx = this.chart.ctx;
     const pos = this.chart.latLonToPixels(state.position.lat, state.position.lon);
     const direction = Math.sign(moment);
-    const sweep = direction * Math.PI * 0.65;
     const endAngle = startAngle + sweep;
 
     ctx.save();
@@ -215,7 +241,7 @@ export class VectorRenderer {
     this.drawVectorLabel(
       pos.x + Math.cos(endAngle) * labelDistance,
       pos.y + Math.sin(endAngle) * labelDistance,
-      label,
+      formatMomentLabel(label, moment),
       color
     );
   }
@@ -461,7 +487,7 @@ export class VectorRenderer {
         data.push({ text: `GROUND EFFECT ${Math.round(forces.aerodynamic.groundEffect * 100)}%`, color: palette.accent });
       }
       if (forces.moments) {
-        data.push({ text: `MOM L${Math.round(forces.moments.L)} M${Math.round(forces.moments.M)} N${Math.round(forces.moments.N)}` });
+        data.push({ text: `MOM[N·m] L${Math.round(forces.moments.L)} M${Math.round(forces.moments.M)} N${Math.round(forces.moments.N)}` });
       }
     }
 
