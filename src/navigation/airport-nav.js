@@ -31,6 +31,7 @@ export class AirportNavigation {
     this.chartFeatures = chartFeatures;
     this.selectedAirport = null;
     this.selectedRunway = null; // Active runway based on wind
+    this.runwaySelectionLocked = false;
   }
 
   /**
@@ -47,6 +48,7 @@ export class AirportNavigation {
     if (airport) {
       this.selectedAirport = airport;
       this.selectedRunway = null;
+      this.runwaySelectionLocked = false;
       console.log(`Airport selected: ${airport.id} - ${airport.name}`);
       return airport;
     }
@@ -60,6 +62,7 @@ export class AirportNavigation {
   clearSelection() {
     this.selectedAirport = null;
     this.selectedRunway = null;
+    this.runwaySelectionLocked = false;
     console.log('Airport selection cleared');
   }
 
@@ -130,6 +133,7 @@ export class AirportNavigation {
       // Select nearest
       this.selectedAirport = nearby[0].airport;
       this.selectedRunway = null;
+      this.runwaySelectionLocked = false;
       return this.selectedAirport;
     }
 
@@ -144,6 +148,7 @@ export class AirportNavigation {
       this.selectedAirport = nearby[nextIndex].airport;
     }
     this.selectedRunway = null;
+    this.runwaySelectionLocked = false;
 
     // Safely get distance for logging
     const found = nearby.find(a => a.airport.id === this.selectedAirport.id);
@@ -223,9 +228,18 @@ export class AirportNavigation {
    * @param {number} windDirection - Wind direction in degrees [0-360°)
    * @returns {Object|null} Active runway object, or null if airport has no runways
    */
-  determineActiveRunway(airport, windDirection) {
+  determineActiveRunway(airport, windDirection, { force = false } = {}) {
     if (!airport.runways || airport.runways.length === 0) {
       return null;
+    }
+
+    // Once an airport has an active runway, keep that runway end stable for the
+    // complete approach. Crosswind variation near a 90-degree tie must not swap
+    // the ILS and traffic pattern underneath the pilot. Re-selecting the airport
+    // explicitly clears this lock and chooses again from the current wind.
+    if (!force && this.runwaySelectionLocked &&
+        this.selectedAirport?.id === airport.id && this.selectedRunway) {
+      return this.selectedRunway;
     }
 
     // Find the specific runway end most aligned with the wind.
@@ -270,7 +284,53 @@ export class AirportNavigation {
       reciprocal,
       trafficPattern
     };
+    this.runwaySelectionLocked = this.selectedAirport?.id === airport.id;
     return this.selectedRunway;
+  }
+
+  /**
+   * Select and lock a specific end of a physical runway.
+   * Used when a scenario places the aircraft on a named runway end: the
+   * navigation source and ILS must describe the same end as the spawn point.
+   */
+  selectRunwayEnd(airport, runwayEndId) {
+    if (!airport?.runways?.length) return null;
+
+    const requested = String(runwayEndId ?? '').toUpperCase();
+    const runway = airport.runways.find(entry =>
+      entry.id.toUpperCase() === requested ||
+      entry.id.toUpperCase().split('/').includes(requested)
+    );
+    if (!runway) return null;
+
+    const runwayEnds = runway.id.toUpperCase().split('/');
+    const reciprocal = requested === runwayEnds[1];
+    const heading = this.normalizeHeading(runway.heading + (reciprocal ? 180 : 0));
+    const trafficPattern = runway.trafficPattern
+      ? {
+          ...runway.trafficPattern,
+          side: reciprocal
+            ? this.oppositePatternSide(runway.trafficPattern.side)
+            : runway.trafficPattern.side
+        }
+      : undefined;
+
+    this.selectedAirport = airport;
+    this.selectedRunway = {
+      ...runway,
+      id: runwayEnds[reciprocal ? 1 : 0] ?? this.headingToRunwayNumber(heading),
+      physicalRunwayId: runway.id,
+      heading,
+      reciprocal,
+      trafficPattern
+    };
+    this.runwaySelectionLocked = true;
+    return this.selectedRunway;
+  }
+
+  unlockRunwaySelection() {
+    this.selectedRunway = null;
+    this.runwaySelectionLocked = false;
   }
 
   normalizeHeading(heading) {
@@ -399,8 +459,10 @@ export class AirportNavigation {
     const bearing = this.calculateBearing(aircraftLat, aircraftLon,
                                          this.selectedAirport.lat, this.selectedAirport.lon);
 
-    // Determine active runway based on wind
-    const activeRunway = this.determineActiveRunway(this.selectedAirport, windDirection);
+    // Choose once from the wind, then keep the runway end stable until the
+    // airport is explicitly re-selected.
+    const activeRunway = this.selectedRunway ??
+      this.determineActiveRunway(this.selectedAirport, windDirection);
 
     // Calculate ETA (hours)
     const eta = aircraftGroundSpeed > 10 ? distance / aircraftGroundSpeed : 0;
@@ -418,6 +480,7 @@ export class AirportNavigation {
       bearing,
       eta: { minutes: etaMinutes, seconds: etaSeconds },
       activeRunway,
+      runwayLocked: this.runwaySelectionLocked,
       recommendedEntry,
       patternAltitude: activeRunway?.trafficPattern?.altitude || 1000
     };

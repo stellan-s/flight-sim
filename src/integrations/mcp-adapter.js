@@ -99,7 +99,10 @@ export class FlightSimulatorMcpAdapter {
         theme: sim.chart.theme,
         zoom: sim.chart.requestedZoom,
         rotationMode: sim.chart.rotationMode,
-        vectorMode: sim.vectors.vectorMode
+        vectorMode: sim.vectors.vectorMode,
+        client: sim.clients?.activeId ?? 'ascii',
+        threeDStyle: sim.clients?.getStyle?.() ?? null,
+        threeDCamera: sim.clients?.getCamera?.() ?? null
       },
       availableThemes: CHART_THEME_NAMES,
       airports: sim.chartFeatures?.airports ?? [],
@@ -209,7 +212,8 @@ export class FlightSimulatorMcpAdapter {
       if (airport) sim.airportNav.selectAirport(airport.id);
     }
     if (!airport) throw new Error('No airport is selected or available');
-    const runway = sim.airportNav.determineActiveRunway(airport, sim.wind.direction);
+    const runway = sim.airportNav.selectedRunway ??
+      sim.airportNav.determineActiveRunway(airport, sim.wind.direction);
     if (!runway) throw new Error(`Airport ${airport.id} has no usable runway`);
     return { airport, runway };
   }
@@ -284,7 +288,16 @@ export class FlightSimulatorMcpAdapter {
     );
   }
 
-  setDisplay({ theme, vectorMode, rotationMode, zoom, ilsOverlayVisible } = {}) {
+  setDisplay({
+    theme,
+    vectorMode,
+    rotationMode,
+    zoom,
+    ilsOverlayVisible,
+    client,
+    threeDStyle,
+    threeDCamera
+  } = {}) {
     const sim = this.simulator;
     if (theme !== undefined && !sim.chart.setTheme(String(theme))) {
       throw new Error(`Unknown theme: ${theme}`);
@@ -303,6 +316,9 @@ export class FlightSimulatorMcpAdapter {
     }
     if (Number.isFinite(zoom)) sim.chart.setZoom(zoom);
     if (typeof ilsOverlayVisible === 'boolean') CONFIG.SHOW_ILS_OVERLAY = ilsOverlayVisible;
+    if (client !== undefined) sim.clients?.select(client);
+    if (threeDStyle !== undefined) sim.clients?.setStyle(threeDStyle);
+    if (threeDCamera !== undefined) sim.clients?.setCamera(threeDCamera);
     sim.render();
     return {
       theme: sim.chart.theme,
@@ -310,7 +326,10 @@ export class FlightSimulatorMcpAdapter {
       rotationMode: sim.chart.rotationMode,
       zoom: sim.chart.zoom,
       requestedZoom: sim.chart.requestedZoom,
-      ilsOverlayVisible: CONFIG.SHOW_ILS_OVERLAY
+      ilsOverlayVisible: CONFIG.SHOW_ILS_OVERLAY,
+      client: sim.clients?.activeId ?? 'ascii',
+      threeDStyle: sim.clients?.getStyle?.() ?? null,
+      threeDCamera: sim.clients?.getCamera?.() ?? null
     };
   }
 
@@ -360,6 +379,7 @@ export class FlightSimulatorMcpAdapter {
     sim.envelopeState = sim.envelope.reset();
     sim.flightController.disengage('SCENARIO LOADED — MANUAL CONTROL');
     sim.flightRecorder.reset(0);
+    sim.instructorMonitor?.reset(0);
 
     if (args.startMode === 'runway') {
       const airportId = args.airportId ?? CONFIG.INITIAL_AIRPORT;
@@ -380,8 +400,10 @@ export class FlightSimulatorMcpAdapter {
       sim.initialTrim = null;
       sim.groundState = sim.ground.getStatus(sim.state, sim.controls);
       sim.updateMapZoom(1);
+      const airport = sim.airportNav?.selectAirport(airportId);
+      if (airport) sim.airportNav.selectRunwayEnd(airport, spawn.runwayEnd);
       this.refreshDiagnostics();
-      sim.airportNav?.selectAirport(airportId);
+      sim.instructorMonitor?.update(sim, 0);
       sim.chart.setCenter(sim.state.position.lat, sim.state.position.lon);
       sim.paused = args.paused ?? true;
       sim.render();
@@ -431,6 +453,7 @@ export class FlightSimulatorMcpAdapter {
     sim.updateMapZoom(1);
     this.refreshDiagnostics();
     if (args.airportId) this.selectAirport({ airportId: args.airportId });
+    sim.instructorMonitor?.update(sim, 0);
     sim.chart.setCenter(sim.state.position.lat, sim.state.position.lon);
     sim.paused = args.paused ?? true;
     sim.render();

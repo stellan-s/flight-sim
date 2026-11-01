@@ -8,6 +8,7 @@ export class GameSession {
     this.lastStateAt = null;
     this.commandTimeoutMs = commandTimeoutMs;
     this.pending = new Map();
+    this.monitorWaiters = new Set();
   }
 
   get connected() {
@@ -17,6 +18,7 @@ export class GameSession {
   attach(socket) {
     if (this.socket && this.socket !== socket) this.socket.close(1012, 'Replaced by a new game session');
     this.rejectPending(new Error('Game session replaced'));
+    this.rejectMonitorWaiters(new Error('Game session replaced'));
     this.socket = socket;
     this.state = null;
     this.connectedAt = new Date().toISOString();
@@ -27,9 +29,13 @@ export class GameSession {
       if (this.socket !== socket) return;
       this.socket = null;
       this.rejectPending(new Error('Game session disconnected'));
+      this.rejectMonitorWaiters(new Error('Game session disconnected'));
     });
     socket.on('error', error => {
-      if (this.socket === socket) this.rejectPending(error);
+      if (this.socket === socket) {
+        this.rejectPending(error);
+        this.rejectMonitorWaiters(error);
+      }
     });
   }
 
@@ -44,6 +50,7 @@ export class GameSession {
     if (message.type === 'state' && message.state && typeof message.state === 'object') {
       this.state = message.state;
       this.lastStateAt = new Date().toISOString();
+      this.resolveMonitorWaiters();
       return;
     }
 
@@ -87,6 +94,44 @@ export class GameSession {
     });
   }
 
+  waitForInstructorChange(afterRevision, timeoutMs = 15000) {
+    const state = this.requireState();
+    const current = state.instructorMonitor;
+    if (!current) {
+      return Promise.reject(new Error(
+        'The connected game does not expose the local instructor monitor.'
+      ));
+    }
+    if (current.revision !== afterRevision) {
+      return Promise.resolve({ changed: true, monitor: current });
+    }
+
+    return new Promise((resolve, reject) => {
+      const waiter = {
+        afterRevision,
+        resolve,
+        reject,
+        timer: null
+      };
+      waiter.timer = setTimeout(() => {
+        this.monitorWaiters.delete(waiter);
+        resolve({ changed: false, monitor: this.state?.instructorMonitor ?? current });
+      }, timeoutMs);
+      this.monitorWaiters.add(waiter);
+    });
+  }
+
+  resolveMonitorWaiters() {
+    const monitor = this.state?.instructorMonitor;
+    if (!monitor) return;
+    for (const waiter of [...this.monitorWaiters]) {
+      if (monitor.revision === waiter.afterRevision) continue;
+      clearTimeout(waiter.timer);
+      this.monitorWaiters.delete(waiter);
+      waiter.resolve({ changed: true, monitor });
+    }
+  }
+
   rejectPending(error) {
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
@@ -95,12 +140,21 @@ export class GameSession {
     this.pending.clear();
   }
 
+  rejectMonitorWaiters(error) {
+    for (const waiter of this.monitorWaiters) {
+      clearTimeout(waiter.timer);
+      waiter.reject(error);
+    }
+    this.monitorWaiters.clear();
+  }
+
   status() {
     return {
       connected: this.connected,
       connectedAt: this.connectedAt,
       lastStateAt: this.lastStateAt,
-      pendingCommands: this.pending.size
+      pendingCommands: this.pending.size,
+      waitingInstructorReads: this.monitorWaiters.size
     };
   }
 }

@@ -63,6 +63,24 @@ test('force projection preserves vertical lift and weight directions', () => {
   assertVector(lift, { x: -weight.x, y: -weight.y });
 });
 
+test('map pan remains offset from the moving aircraft follow position', () => {
+  const chart = createChart();
+  chart.setCenter(10, 20);
+  chart.panByPixels(90, -45);
+  const offset = chart.getPanOffset();
+
+  assert.ok(offset.longitude < 0);
+  assert.ok(offset.latitude < 0);
+  chart.setCenter(11, 21);
+  assert.ok(Math.abs(chart.centerLat - (11 + offset.latitude)) < EPSILON);
+  assert.ok(Math.abs(chart.centerLon - (21 + offset.longitude)) < EPSILON);
+
+  chart.resetPan();
+  assert.deepEqual(chart.getPanOffset(), { latitude: 0, longitude: 0 });
+  assert.equal(chart.centerLat, 11);
+  assert.equal(chart.centerLon, 21);
+});
+
 test('vector labels retain their filled color-coded boxes', () => {
   const operations = [];
   const ctx = {

@@ -61,7 +61,7 @@ export class FlightRecorder {
   export() {
     return {
       format: 'vector-flight-recorder',
-      version: 1,
+      version: 2,
       startedAt: this.startedAt,
       sampleIntervalSeconds: this.sampleIntervalSeconds,
       samples: this.samples.map(sample => ({ ...sample })),

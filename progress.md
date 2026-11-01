@@ -417,3 +417,302 @@ Implement all seven approved simulator improvements while preserving the existin
 - Browser QA verified signed L/M/N labels and distinct curved arrows at rest and
   under combined elevator, aileron, and rudder input with no console errors.
 - Current automated result: 89 tests, syntax validation, and static build pass.
+
+## Multi-client engine branch and Vector 3D (2026-11-01)
+
+- User prompt: support interchangeable clients above one flight engine, retaining
+  the current ASCII client and adding a 3D client with multiple aesthetics.
+- Created branch `codex/multi-client-3d` from the latest local `main`.
+- Added `SimulationSession` as a renderer-neutral command, state, stepping, and
+  serialization boundary. The existing fixed physics step now runs through it,
+  and it is exposed as `window.flightSimulatorSession` for future clients.
+- Added a runtime `ClientManager` and compatibility `AsciiMapClient`. Switching
+  clients changes only rendering; it does not clone, pause, or reset physics.
+- Added the Canvas-based `Vector3DClient`: body-frame perspective projection,
+  attitude horizon, world-aligned ground grid, clipped runway surfaces,
+  centerlines and lights, obstacles, ILS needles, throttle, linear forces, and
+  signed roll/pitch/yaw moment arcs.
+- Added four 3D aesthetics: Vector Day, Nord Night, Amber CRT with scanlines,
+  and Blueprint. K switches clients and Y cycles aesthetics. Both selections
+  are available in ASCII settings, browser persistence, URL parameters, text
+  telemetry, and MCP `set_display`.
+- Browser QA inspected the unchanged ASCII client, all four 3D ground views,
+  and a paused 95-knot airborne scene at 1,001 ft AGL with a 12-degree bank.
+  The airborne render showed the projected runway and grid plus balanced lift,
+  weight, thrust, and drag with no console errors.
+- End-to-end keyboard QA verified ASCII -> Vector 3D -> Nord Night -> ASCII
+  while paused, preserving exact position and flight time.
+
+### Multi-client follow-ups
+
+- [ ] Move the remaining legacy browser-host construction out of `main.js` so
+  `SimulationSession` can create the complete engine without a DOM host.
+- [ ] Add optional terrain height tiles; Vector 3D currently projects the same
+  continuous flat-field terrain estimate used by AGL.
+- [x] Add chase and tower cameras after the cockpit projection is flight-tested.
+
+## Vector 3D cameras (2026-11-01)
+
+- Added Cockpit, Chase, and Tower cameras to the Vector 3D client. J cycles the
+  camera without mutating position, controls, physics time, or control ownership.
+- Chase follows 72 metres behind and 18 metres above the aircraft with a lightly
+  damped bank angle. Tower stays beside the nearest or selected airport runway
+  and continuously tracks the aircraft.
+- External views draw a projected Cessna wireframe and attach the force vectors
+  to its screen position. Vector directions are transformed through the camera,
+  so lift, weight, thrust, and drag remain spatially meaningful outside cockpit view.
+- Camera selection is available through URL state, ASCII settings, persistence,
+  deterministic text state, the session command boundary, and MCP `set_display`.
+- Browser QA inspected all three ground and airborne views. Keyboard QA produced
+  Cockpit -> Chase -> Tower -> Cockpit with unchanged aircraft state and flight
+  time, and no console or page errors. The ASCII DISPLAY screen shows the live
+  camera selection.
+
+### Terrain design checkpoint
+
+- [ ] Do not add decorative 3D terrain independently of the map. Define one
+  geodetic world source whose elevation and feature data feed AGL, the ASCII map,
+  and Vector 3D together.
+- [ ] Decide elevation tile format, level-of-detail rules, offline/cache policy,
+  map contour treatment, and whether the current fictional airports remain or
+  become a selectable world layer before implementing terrain.
+
+## Vector 3D ground-grid projection fix (2026-11-01)
+
+- Fixed grid lines appearing in the sky during banked flight. The renderer had
+  clamped each projected endpoint independently to a +/-50,000-pixel square,
+  which changed the slope of long near-plane lines and detached them from the
+  projected ground plane.
+- Added true rectangular screen-segment clipping. It preserves the original
+  perspective line while discarding only the off-screen part. The attitude
+  background now also uses the exact tangent-based pitch projection.
+- Converted grid calculations from feet to metres and anchored major lines to
+  absolute geographic indices instead of the nearest aircraft-relative cell.
+- A first follow-up made the grid too faint and shortened its range. Restored
+  the original 0.16/0.38 alpha, line widths, and effective altitude density,
+  while retaining correct clipping and extending the grid back to the visible
+  horizon.
+- Browser QA reproduced a 4,114 ft MSL / 2,915 ft AGL scene at 0, -16.2, -30,
+  and +30 degrees bank. Every grid line remained on the ground side of the
+  horizon and the browser reported no console or page errors.
+- Replaced the remaining finite grid square with nested near, middle, and far
+  distance levels. The coarse outer levels begin beyond the previous level and
+  extend the projected ground plane to within a few pixels of the mathematical
+  horizon without stacking lines or weakening the foreground grid.
+- Regression QA matched the reported 2,496 ft MSL / 1,296 ft AGL scene at +4.5
+  degrees pitch and -0.3, -16.2, and +30 degrees bank. Grid and horizon now meet
+  at every tested attitude, with no sky-side lines or browser errors.
+
+## Vector 3D ASCII control panel (2026-11-01)
+
+- Added a borderless, theme-aware ASCII control readout below the 3D client label.
+  It shows elevator trim independently from live elevator position, plus aileron,
+  rudder, throttle, flap angle, and wheel brake command.
+- Trim includes a numerical percentage, NOSE UP / NOSE DN / NEUTRAL direction,
+  and a higher-resolution signed bar scaled to the configured normal +/-30%
+  trim range. The existing center-adjacent throttle tape remains unchanged.
+- Browser QA exercised Page Down trim followed by opposite elevator input. The
+  panel showed +6% NOSE UP trim while the elevator remained negative, matching
+  deterministic text state. Throttle 43% and flaps 10 degrees also matched.
+- Final result: 100 tests and the static build pass; no browser console or page
+  errors were reported.
+
+## Vector 3D grid horizon density (2026-11-01)
+
+- The corrected grid geometry still accumulated too many opaque projected lines
+  close to the horizon, producing a dark moire-like band in banked flight.
+- Split the grid into four distance-based detail levels. The closest 4.5-12 km
+  keeps the existing strong contrast; outer rings progressively reduce opacity,
+  line width, and line frequency without changing the foreground appearance.
+- Reproduced the reported square viewport at 3,058 ft MSL / 1,858 ft AGL,
+  +3.6 degrees pitch, and -11.8 degrees bank, then checked 0 and +30 degrees.
+  All grid lines remain on the ground side, meet the horizon, and no longer form
+  a nearly solid far-distance band. Browser console and page errors remain empty.
+
+## Vector 3D ground-level grid coverage (2026-11-01)
+
+- Fixed the empty lower viewport at runway height. The generic 20-metre near
+  clipping plane prevented the projected ground grid from reaching the bottom
+  when the cockpit was only 4 ft above terrain.
+- Grid clipping now scales from 1.5 metres near the surface to the unchanged
+  20-metre limit aloft and uses camera height, so cockpit, chase, and tower views
+  receive appropriate coverage independently.
+- The single world grid changes scale with camera height: 2-metre cells at runway
+  height, then 5, 10, and 25 metres before progressively coarser airborne scales.
+  Its near clipping still fills the foreground without introducing a second grid.
+- Browser QA inspected both 1280x720 and the reported 1280x1280 layout at 4.1 ft
+  AGL. Grid lines now remain visible through the bottom foreground, meet the
+  horizon, and produce no browser console or page errors.
+
+## Stable MCP subtitle and runway foreground (2026-11-01)
+
+- Locked the in-game MCP instructor subtitle to white text on a black background.
+  Its colour no longer changes with the selected visual theme or with instruction
+  versus warning severity.
+- Confirmed with a deterministic ground test that the aircraft spawns on runway
+  18/36 with zero cross-track displacement. The apparent off-runway position was
+  a rendering problem rather than a placement or physics problem.
+- Applied the height-dependent near clipping plane to the complete runway drawing,
+  including its filled surface, edges, markings, centreline, and lights. The
+  runway now reaches the bottom foreground at 4.1 ft AGL instead of ending in a
+  narrow strip at the horizon.
+- Browser QA inspected cockpit and chase views in the reported square layout. The
+  aircraft is visually centred on the runway, the warning subtitle remains black
+  and white, and no browser console or page errors were reported.
+
+## Continuous Vector 3D wireframe (2026-11-01)
+
+- Removed the concentric grid detail rings. Their cut-out centres caused lines to
+  terminate at arbitrary square boundaries, so the surface looked like separate
+  patches instead of one wireframe.
+- The ground is now one world-anchored grid at any given camera height. Every line
+  spans the same complete surface extent, with one spacing and one major-line
+  rhythm; only the whole grid scale changes as camera height changes.
+- Browser QA covered runway-height cockpit and chase views plus banked flight at
+  1,858 ft AGL. The mesh remains continuous from the foreground to the horizon,
+  stays entirely on the ground side, and produced no console or page errors.
+
+## Shared ASCII and Vector 3D themes (2026-11-01)
+
+- Removed the independent `3D aesthetic` setting. The active chart theme is now
+  the single source of truth for the ASCII map, settings/help surfaces, and the
+  Vector 3D client.
+- Vector 3D palettes are generated from all fifteen chart themes, including the
+  same semantic force-vector colours. The 3D ground is a subtle blend of each
+  theme's background and foreground so the horizon remains readable.
+- `Y`, the configuration console, persistence, URL style selection, and MCP
+  display changes all update the shared theme. Legacy `vector-day`, `nord-night`,
+  and `amber-crt` URLs map to compatible current themes. `blueprint` is once
+  again a first-class shared theme in both clients.
+- Browser QA followed `ASCII Nord -> Vector 3D Nord -> Vector 3D Dracula ->
+  ASCII Dracula` using real `K` and `Y` key events. Both reported theme fields
+  matched at every step, all four screenshots matched visually, and no browser
+  console or page errors were reported.
+
+## Shared HUD across rendering clients (2026-11-01)
+
+- Split the normal HUD into a shared underlay and overlay. The pitch reference and
+  full-screen ILS guidance render below client-specific force vectors; every other
+  instrument renders above the ASCII map or Vector 3D world from the same methods.
+- Vector 3D now shows the normal altitude/IAS/heading/vertical-speed header, wind
+  and zoom, ground and envelope status, flight/force/control panel, throttle tape,
+  airport navigation, energy trend, vector and map modes, client/camera/theme,
+  timer, mouse crosshair, pause state, instruction strip, help, and settings.
+- Expanded the common control panel with aileron, rudder, and brake bars so moving
+  from the retired special 3D HUD does not remove any control information. The
+  crosshair now uses the active theme foreground instead of hard-coded black.
+- Removed the separate 3D HUD renderer. Browser QA compared paused Nord ASCII and
+  3D frames with a selected airport, populated energy history, and crosshair at an
+  identical aircraft state, then checked the chase camera separately. Layout and
+  values matched and no browser console or page errors were reported.
+
+## Plain-language MCP instructor (2026-11-01)
+
+- Rewrote the reusable flight-instructor prompt as a continuous observe, instruct,
+  and verify loop. It gives one action, reads the resulting flight state, and only
+  then continues without asking the pilot to reply in chat.
+- Each on-screen instruction is limited to 160 characters and at most two short
+  sentences. It names the exact key or control action plus current and desired
+  values or a clear stopping condition.
+- Pilot-facing text must use the pilot's language and ordinary words. The prompt
+  explicitly replaces abbreviations and aviation terms such as AGL, IAS, FPM,
+  pitch, bank, and trim with direct descriptions of height, speed, movement, and
+  keyboard actions.
+- Added shared server instructions, stricter `show_instruction` guidance, focused
+  regression tests, and matching README/MCP documentation.
+- Added a server-side plain-language gate after browser QA caught an older active
+  instructor still sending `STALLRISK 15 KT`. Common abbreviations and aviation
+  terms are rejected before reaching the subtitle, forcing the client to rewrite
+  the instruction in ordinary words.
+- Restarted the local MCP server and verified the real HTTP endpoint returns the
+  updated prompt and tool description and rejects the old jargon-heavy message.
+  A full browser/MCP pass accepted and displayed a concise Swedish instruction in
+  Vector 3D; the inspected screenshot matched the requested subtitle style and
+  reported no console or page errors. All 110 tests and the static build pass.
+
+## Recorded instructor-flight review (2026-11-01)
+
+- Stopped and exported the 10 Hz flight recorder after the guided circuit and
+  landing. It contains 14,719 samples over 1,471.8 seconds and five ground events.
+- The landing was off-runway on grass. The first contact was 299 ft/min at 76 kt
+  with -0.8 degrees pitch, followed 0.317 seconds later by a false `takeoff`, a
+  364 ft/min bounce, and a second contact at 73 kt. The displayed 50/100 report
+  therefore describes only the final contact and hides the worse first contact.
+- Code review found three high-priority defects exposed by the flight: active
+  runway selection has no hysteresis and changes ends as a crosswind varies;
+  held keyboard keys are not cleared on browser blur or visibility loss; and a
+  post-touchdown rebound starts a new takeoff/landing cycle instead of remaining
+  part of one landing.
+- Landing quality also conflates impact severity with runway adherence: any
+  off-runway contact is labelled `HARD`, even the one recorded at 1 ft/min.
+- The recorder lacks wind, selected runway, ILS deviations, runway surface and
+  on-runway state, so a complete navigation/approach replay cannot yet be derived
+  from the export alone. No aerodynamic coefficient change is justified by this
+  flight because instructor latency and potentially stuck inputs contaminated the
+  handling data; the deterministic trim tests remain bounded.
+
+## Flight-review corrections (2026-11-01)
+
+- Added browser blur and visibility-loss handling for human input. Lost keyup
+  events now clear held keys, return elevator to trim, centre aileron/rudder and
+  release wheel brakes while preserving the pilot's selected throttle.
+- Active runway selection now locks on the first wind-based choice for a selected
+  airport. Wind variation cannot swap reciprocal runway ends or move the ILS
+  during an approach; explicitly re-selecting the airport chooses again.
+- Reworked touchdown handling into one landing cycle. Initial contact, aerodynamic
+  rebound and subsequent bounces are accumulated until wheel contact is stable;
+  only one touchdown report is persisted, using the worst impact and lowest score.
+- Split impact quality from surface result. A smooth grass contact remains
+  `SMOOTH / OFF_RUNWAY` instead of being mislabeled `HARD`, while off-runway
+  penalties and the overall safety result remain intact.
+- Upgraded flight-recorder exports to version 2. Every 10 Hz sample now includes
+  wind, locked runway, centreline distance, compact ILS deviations/capture,
+  ground surface/contact, brakes, trim, envelope state and instructor subtitle.
+- Added a renderer-neutral instructor monitor that samples inside the simulation
+  once per second and increments a revision only for meaningful flight changes.
+  MCP now exposes `wait_for_flight_change`, a long-poll tool that wakes on that
+  revision instead of requiring an AI client to issue one read every second.
+- Runway and airborne scenario loads now publish a complete instructor sample
+  immediately. Monitor revisions remain monotonic across resets, so an MCP wait
+  cannot wake on a temporary `unknown` state.
+- Runway starts explicitly lock navigation to the same runway end as the physical
+  spawn. Live reset verification now reports heading 180, active runway 18 and a
+  locked runway 18 instead of leaving the ILS on reciprocal runway 36.
+- Final verification passes all 122 tests, JavaScript syntax checks and the static
+  production build. Live HTTP MCP verification confirms all 27 tools, a meaningful
+  wait transition from revision 1 to 2, and a clean reset to the runway state.
+
+## Mouse look, map pan and joystick input (2026-11-01)
+
+- Added one right-button drag gesture across both clients. It pans a persistent
+  aircraft-relative map offset in ASCII and changes yaw/pitch view offsets in
+  cockpit, chase and tower cameras without changing the aircraft state.
+- Preserved stationary right-click VOR tuning in the ASCII map; the three-pixel
+  drag threshold prevents a click from accidentally moving the map.
+- Added browser Gamepad API polling with safe activation. A detected joystick
+  remains inactive until an axis moves or a button is pressed, avoiding an
+  unexpected throttle or control jump merely from connecting hardware.
+- Default mappings cover roll, pitch, rudder, throttle, wheel brake, flap detents
+  and both trim directions. Deadzone, activation threshold, axis/button indices,
+  inversion, mouse-look sensitivity and map-pan sensitivity are live, persistent
+  settings in the `CONTROLS` console group.
+- Deterministic text output now reports map offset, 3D look angle, pointer mode,
+  joystick identity, connection/activation state, and normalized live axes.
+- Browser QA performed real held-right-button drags in both clients and injected
+  a virtual flight stick. Map and camera state changed independently, the HUD
+  reflected every joystick command, and no console or page errors were reported.
+- The final full suite passes all 128 tests and JavaScript syntax checks; the
+  production static build also completes successfully.
+
+## Shared Blueprint theme and temporary mouse look (2026-11-01)
+
+- Restored the former blue Vector 3D aesthetic as a real `blueprint` theme in
+  the common theme registry. It is now available in both ASCII and Vector 3D,
+  including their shared HUD, settings console and force-vector colours.
+- Vector 3D right-button mouse look is now temporary: yaw and pitch return to
+  centre on release, pointer cancellation, browser blur or hidden-tab input
+  cleanup. ASCII right-button map panning remains persistent after release.
+- Browser QA verified Blueprint in both clients without console errors and ran
+  an actual held right-button drag. The measured 3D look changed to 34.377
+  degrees yaw and 17.189 degrees pitch while held, then returned to exactly
+  zero on release; the ASCII map offset remained unchanged after release.

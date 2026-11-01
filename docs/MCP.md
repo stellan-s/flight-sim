@@ -148,19 +148,28 @@ that case, remove only `"type": "http"`; do not change the URL.
 2. Open <http://127.0.0.1:3005> and leave the tab running.
 3. Ask the AI client to call `get_flight_state` with the flight-sim tools.
 4. Use `show_instruction` for a short instruction inside the simulator.
-5. Use high-level commands such as `hold_heading`, `hold_altitude`, or
+   The instructor gives one concrete action at a time, includes current and
+   desired values when useful, and avoids abbreviations and aviation jargon.
+5. Call `wait_for_flight_change` with the current `instructorMonitor.revision`.
+   The browser samples locally once per second and returns only after a meaningful
+   change, so the AI client does not need to poll every second.
+6. Read `get_flight_state` again only after the revision changes.
+7. Use high-level commands such as `hold_heading`, `hold_altitude`, or
    `fly_to_waypoint`; their control loops run continuously inside the game.
-6. Return control with `set_control_owner` set to `human`. Moving a human flight
+8. Return control with `set_control_owner` set to `human`. Moving a human flight
    control also disconnects the instructor or autopilot automatically.
-7. Use `flight_recorder` to inspect or export the timestamped flight record.
+9. Use `flight_recorder` to inspect or export the timestamped flight record.
 
 ## Available MCP capabilities
 
-The server exposes 26 tools, five JSON resources, and two reusable prompts.
+The server exposes 27 tools, five JSON resources, and two reusable prompts.
 Important groups include:
 
-- State: `get_flight_state`, `get_force_vectors`, `get_navigation_state`
+- State: `get_flight_state`, `get_force_vectors`, `get_navigation_state`,
+  `wait_for_flight_change`
 - Configuration: `get_configuration`, `set_simulator_parameter`, `set_display`
+  (`set_display` can also switch between the ASCII and Vector 3D clients and select
+  their shared theme or a 3D camera)
 - Scenarios: `load_scenario`, `pause_flight`, `resume_flight`, `reset_flight`
 - Autopilot: `hold_heading`, `hold_altitude`, `hold_airspeed`,
   `fly_to_waypoint`, `join_pattern`, `fly_approach`
@@ -170,6 +179,16 @@ Important groups include:
 Use `get_flight_state` before issuing control instructions. Prefer the
 high-level autopilot tools over repeatedly sending raw elevator or aileron
 values across the network.
+
+The reusable `flight-instructor` prompt is designed for continuous coaching.
+The simulator checks flight conditions locally once per second. The prompt waits
+for a changed monitor revision after every maneuver and writes concise instructions
+in the pilot's language. Each message names the control action and a measurable
+result instead of relying on terms such as `AGL`, `IAS`, `FPM`, `pitch`, or
+`bank`.
+The server also rejects `show_instruction` messages containing common flight
+abbreviations or jargon, so stale or less careful clients must rewrite them
+before anything reaches the in-game subtitle.
 
 ## Browser-only mode
 

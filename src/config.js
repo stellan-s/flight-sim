@@ -39,6 +39,8 @@ export const CONFIG = {
   CRASH_SINK_RATE_FPM: 900,
   CRASH_BANK_DEG: 32,
   CRASH_PITCH_DEG: 22,
+  LANDING_SETTLE_SECONDS: 0.75,
+  LANDING_REBOUND_WINDOW_SECONDS: 6,
 
   // Chart rendering
   BASE_SCALE: 10000,       // meters per degree at zoom=1
@@ -49,6 +51,9 @@ export const CONFIG = {
   MIN_ZOOM: 0.1,
   ZOOM_SPEED: 1.1,         // Zoom multiplier per scroll
   DEFAULT_MAP_THEME: 'black-white',
+  DEFAULT_CLIENT: 'ascii',
+  DEFAULT_3D_STYLE: 'black-white',
+  DEFAULT_3D_CAMERA: 'cockpit',
 
   // Default rotation mode: 'north-up' or 'track-up'
   DEFAULT_ROTATION_MODE: 'north-up',

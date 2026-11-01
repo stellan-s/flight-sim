@@ -13,6 +13,10 @@ export class ChartRenderer {
     this.contextMinimumZoom = null;
     this.centerLat = 0;
     this.centerLon = 0;
+    this.followCenterLat = 0;
+    this.followCenterLon = 0;
+    this.panOffsetLat = 0;
+    this.panOffsetLon = 0;
     this.rotationMode = CONFIG.DEFAULT_ROTATION_MODE;
     this.theme = CHART_THEME_NAMES.includes(CONFIG.DEFAULT_MAP_THEME)
       ? CONFIG.DEFAULT_MAP_THEME
@@ -123,8 +127,36 @@ export class ChartRenderer {
   }
 
   setCenter(lat, lon) {
-    this.centerLat = lat;
-    this.centerLon = lon;
+    this.followCenterLat = lat;
+    this.followCenterLon = lon;
+    this.centerLat = lat + this.panOffsetLat;
+    this.centerLon = lon + this.panOffsetLon;
+  }
+
+  panByPixels(deltaX, deltaY) {
+    const centerX = this.canvas.width / 2;
+    const centerY = this.canvas.height / 2;
+    const current = this.pixelsToLatLon(centerX, centerY);
+    const shifted = this.pixelsToLatLon(centerX - deltaX, centerY - deltaY);
+    this.panOffsetLat += shifted.lat - current.lat;
+    this.panOffsetLon += shifted.lon - current.lon;
+    this.centerLat = this.followCenterLat + this.panOffsetLat;
+    this.centerLon = this.followCenterLon + this.panOffsetLon;
+    return this.getPanOffset();
+  }
+
+  resetPan() {
+    this.panOffsetLat = 0;
+    this.panOffsetLon = 0;
+    this.centerLat = this.followCenterLat;
+    this.centerLon = this.followCenterLon;
+  }
+
+  getPanOffset() {
+    return {
+      latitude: this.panOffsetLat,
+      longitude: this.panOffsetLon
+    };
   }
 
   setZoom(zoom) {

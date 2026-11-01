@@ -72,7 +72,7 @@ export class VectorRenderer {
     this.labelBounds = [];
     this.reservedLabelBounds = [
       { x: 0, y: 0, width: canvas.width, height: 82 },
-      { x: canvas.width - CONFIG.STATE_PANEL_X - 8, y: 42, width: CONFIG.STATE_PANEL_X + 8, height: 190 },
+      { x: canvas.width - CONFIG.STATE_PANEL_X - 8, y: 42, width: CONFIG.STATE_PANEL_X + 8, height: 245 },
       { x: throttleX - 8, y: throttleY - 18, width: throttleWidth + 24, height: throttleHeight + 42 },
       {
         x: canvas.width < 1100 ? 12 : canvas.width - 310,
@@ -497,9 +497,12 @@ export class VectorRenderer {
     );
     data.push({ text: 'CONTROLS', color: palette.accent });
     data.push({ text: `ELEV ${signedAsciiBar(controls.elevator)} ${(controls.elevator * 100).toFixed(0).padStart(4, ' ')}%` });
+    data.push({ text: `AIL  ${signedAsciiBar(controls.aileron)} ${(controls.aileron * 100).toFixed(0).padStart(4, ' ')}%` });
+    data.push({ text: `RUD  ${signedAsciiBar(controls.rudder)} ${(controls.rudder * 100).toFixed(0).padStart(4, ' ')}%` });
     data.push({ text: `TRIM ${signedAsciiBar(trim)} ${(trim * 100).toFixed(0).padStart(4, ' ')}%` });
     data.push({ text: `THR  ${asciiBar(controls.throttle)} ${String(Math.round(controls.throttle * 100)).padStart(3, ' ')}%` });
     data.push({ text: `FLAP ${asciiBar(flapAngle, { min: 0, max: 30 })} ${String(flapAngle).padStart(3, ' ')}°` });
+    data.push({ text: `BRK  ${asciiBar(controls.brake)} ${String(Math.round((controls.brake ?? 0) * 100)).padStart(3, ' ')}%` });
 
     data.forEach((entry, index) => {
       drawAsciiText(ctx, entry.text, startX, startY + index * lineHeight, {

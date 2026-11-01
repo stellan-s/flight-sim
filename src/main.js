@@ -19,8 +19,10 @@ import { GroundSystem } from './core/ground.js';
 import { FlightEnvelopeSystem } from './core/flight-envelope.js';
 import { FlightController } from './core/flight-controller.js';
 import { FlightRecorder } from './core/flight-recorder.js';
+import { InstructorMonitor } from './core/instructor-monitor.js';
 import { calculateFlightMetrics } from './core/flight-metrics.js';
 import { PersistenceManager } from './core/persistence.js';
+import { SimulationSession } from './core/simulation-session.js';
 import { StallWarningPlayer } from './audio/stall-warning.js';
 import { ChartRenderer } from './rendering/chart.js';
 import { VectorRenderer } from './rendering/vectors.js';
@@ -31,6 +33,9 @@ import { drawAsciiText } from './rendering/ascii-hud.js';
 import { ConfigurationPanel } from './ui/configuration-panel.js';
 import { HelpPanel } from './ui/help-panel.js';
 import { InstructorOverlay } from './ui/instructor-overlay.js';
+import { AsciiMapClient } from './clients/ascii-map-client.js';
+import { ClientManager } from './clients/client-manager.js';
+import { Vector3DClient } from './clients/vector-3d-client.js';
 import { InputHandler } from './controls/input.js';
 import { WindModel } from './navigation/wind.js';
 import { VORNavigation } from './navigation/vor.js';
@@ -116,6 +121,19 @@ class FlightSimulator {
     this.flightController = new FlightController(this);
     this.flightRecorder = new FlightRecorder();
     this.instructorOverlay = new InstructorOverlay();
+    this.instructorMonitor = new InstructorMonitor();
+    this.session = new SimulationSession(this);
+    this.vector3DClient = new Vector3DClient(this.canvas, this.session, CONFIG.DEFAULT_3D_STYLE);
+    this.clients = new ClientManager([
+      new AsciiMapClient(this),
+      this.vector3DClient
+    ], CONFIG.DEFAULT_CLIENT);
+    const clientParams = new URLSearchParams(window.location.search);
+    this.clientOverride = {
+      client: clientParams.get('client'),
+      style: clientParams.get('style'),
+      camera: clientParams.get('camera')
+    };
 
     // Full runtime configuration console
     this.configPanel = new ConfigurationPanel(this);
@@ -127,6 +145,7 @@ class FlightSimulator {
     if (this.persistedSnapshot) {
       this.persistence.apply(this, this.persistedSnapshot, { features: false });
     }
+    this.applyClientOverride();
 
     // Hold the calculated elevator trim when the pitch control is released.
     this.input.elevatorTrim = initialTrim.elevator;
@@ -196,6 +215,49 @@ class FlightSimulator {
   resizeCanvas() {
     this.canvas.width = window.innerWidth;
     this.canvas.height = window.innerHeight;
+    this.clients?.resize();
+  }
+
+  applyClientOverride() {
+    if (this.clientOverride?.client) {
+      try {
+        this.clients.select(this.clientOverride.client);
+      } catch (error) {
+        console.warn(error.message);
+      }
+    }
+    if (this.clientOverride?.style) {
+      try {
+        this.clients.setStyle(this.clientOverride.style);
+      } catch (error) {
+        console.warn(error.message);
+      }
+    }
+    if (this.clientOverride?.camera) {
+      try {
+        this.clients.setCamera(this.clientOverride.camera);
+      } catch (error) {
+        console.warn(error.message);
+      }
+    }
+  }
+
+  toggleClient() {
+    const client = this.clients.toggle();
+    console.log(`CLIENT: ${client.toUpperCase()}`);
+    return client;
+  }
+
+  cycle3DStyle() {
+    const style = this.clients.cycleStyle();
+    console.log(`THEME: ${style.toUpperCase()}`);
+    return style;
+  }
+
+  cycle3DCamera() {
+    const camera = this.clients.cycleCamera();
+    console.log(`3D CAMERA: ${camera.toUpperCase()}`);
+    return camera;
   }
 
   async loadChartFeatures() {
@@ -207,6 +269,7 @@ class FlightSimulator {
       if (this.persistedSnapshot) {
         this.persistence.apply(this, this.persistedSnapshot, { features: true });
       }
+      this.applyClientOverride();
       this.rebuildWorldSystems();
       this.resetConfiguredFlight();
       this.worldReady = true;
@@ -237,6 +300,7 @@ class FlightSimulator {
     console.log('  P or SPACE: Pause/Resume');
     console.log('  H or ?: Help overlay (scrollable VOR navigation guide)');
     console.log('  C or ENTER: Full flight-model configuration');
+    console.log('  K: Switch ASCII / Vector 3D client | Y: Cycle shared theme');
     console.log('  Mouse Wheel / Arrows: Scroll help when open');
     console.log('');
     console.log('FLIGHT CONTROLS:');
@@ -296,34 +360,7 @@ class FlightSimulator {
   }
 
   stepSimulation() {
-    const substepDt = this.dt / this.physicsSubsteps;
-    for (let i = 0; i < this.physicsSubsteps; i++) {
-      if (typeof this.wind.updateDynamic === 'function') {
-        this.wind.updateDynamic(substepDt);
-      }
-      this.flightController.update(substepDt);
-      this.lastForces = this.physics.update(substepDt);
-      this.groundState = this.physics.lastGroundState ?? this.groundState;
-      this.envelopeState = this.envelope.update(
-        substepDt,
-        this.state,
-        this.controls,
-        this.lastForces,
-        this.groundState
-      );
-      this.handleGroundEvent(this.groundState?.event);
-    }
-
-    this.energyDiagram.update(this.state, this.dt);
-    this.flightTime += this.dt;
-    this.flightRecorder.update(this.flightTime, () => this.createRecorderSample());
-    this.updateMapZoom(this.dt);
-    this.chart.setCenter(this.state.position.lat, this.state.position.lon);
-    this.debugInterval += this.dt;
-    if (this.debugMode && this.debugInterval >= CONFIG.DEBUG_OUTPUT_INTERVAL / 1000) {
-      this.debugInterval = 0;
-      console.log('FLIGHT DEBUG', this.createRecorderSample());
-    }
+    this.session.stepFixed();
   }
 
   updateMapZoom(dt) {
@@ -336,6 +373,8 @@ class FlightSimulator {
 
   createRecorderSample() {
     const metrics = calculateFlightMetrics(this);
+    const ils = metrics.ils ?? { available: false, reason: 'SELECT AIRPORT' };
+    const instructor = this.instructorOverlay.getState(this.flightTime);
     return {
       latitude: this.state.position.lat,
       longitude: this.state.position.lon,
@@ -356,10 +395,63 @@ class FlightSimulator {
         aileron: this.controls.aileron,
         rudder: this.controls.rudder,
         throttle: this.controls.throttle,
-        flaps: this.controls.flaps
+        brake: this.controls.brake,
+        flaps: this.controls.flaps,
+        elevatorTrim: this.input.elevatorTrim
       },
       controlOwner: this.flightController.owner,
       controllerMode: this.flightController.mode,
+      wind: {
+        directionFromDeg: this.wind.direction,
+        speedKt: this.wind.speed,
+        northMps: this.wind.windNorth,
+        eastMps: this.wind.windEast,
+        downMps: this.wind.windDown
+      },
+      navigation: {
+        selectedAirportId: metrics.selectedAirportId,
+        activeRunwayId: metrics.activeRunwayId,
+        activeRunwayHeadingDeg: metrics.activeRunwayHeadingDeg,
+        runwayLocked: this.airportNav?.runwaySelectionLocked ?? false,
+        runwayCenterlineSignedMeters: metrics.runway?.crossTrackMeters ?? null,
+        distanceToRunwayCenterlineMeters: metrics.runway?.centerlineDistanceMeters ?? null,
+        ils: {
+          available: Boolean(ils.available),
+          reason: ils.reason ?? null,
+          status: ils.status ?? null,
+          runwayId: ils.runwayId ?? null,
+          distanceToThresholdNm: ils.distanceToThresholdNm ?? null,
+          localizerErrorDeg: ils.localizerErrorDeg ?? null,
+          localizerDots: ils.localizerDots ?? null,
+          glideslopeErrorDeg: ils.glideslopeErrorDeg ?? null,
+          glideslopeDots: ils.glideslopeDots ?? null,
+          localizerCaptured: Boolean(ils.localizerCaptured),
+          glideslopeCaptured: Boolean(ils.glideslopeCaptured),
+          captured: Boolean(ils.captured)
+        }
+      },
+      ground: this.groundState ? {
+        phase: this.groundState.phase,
+        contact: this.groundState.contact,
+        onRunway: this.groundState.onRunway,
+        airportId: this.groundState.airportId,
+        runwayId: this.groundState.runwayId,
+        surfaceType: this.groundState.surfaceType,
+        terrainElevationFt: this.groundState.terrainElevationFt,
+        landingArmed: this.groundState.landingArmed
+      } : null,
+      envelope: {
+        phase: this.envelopeState?.phase ?? null,
+        warning: Boolean(this.envelopeState?.warning),
+        stalled: Boolean(this.envelopeState?.stalled),
+        spinning: Boolean(this.envelopeState?.spinning)
+      },
+      instructor: {
+        visible: instructor.visible,
+        level: instructor.level,
+        message: instructor.message
+      },
+      instructorMonitor: this.instructorMonitor.getState(),
       groundPhase: this.groundState?.phase ?? null
     };
   }
@@ -465,6 +557,7 @@ class FlightSimulator {
     this.envelopeState = this.envelope.reset();
     this.flightController?.disengage('RESET — MANUAL CONTROL');
     this.flightRecorder?.reset(0);
+    this.instructorMonitor?.reset(0);
 
     if (CONFIG.INITIAL_START_MODE === 'runway' && this.ground) {
       const spawn = this.ground.spawnOnRunway(
@@ -479,9 +572,12 @@ class FlightSimulator {
         CONFIG.INITIAL_RUNWAY_END
       );
       if (spawn) {
+        const airport = this.airportNav?.selectAirport(spawn.airport.id);
+        if (airport) this.airportNav.selectRunwayEnd(airport, spawn.runwayEnd);
         this.input.elevatorTrim = 0;
         this.initialTrim = null;
         this.groundState = this.ground.getStatus(this.state, this.controls);
+        this.instructorMonitor?.update(this, 0);
         this.updateMapZoom(1);
         this.chart.setCenter(this.state.position.lat, this.state.position.lon);
         return spawn;
@@ -517,6 +613,7 @@ class FlightSimulator {
     this.initialTrim = trim;
     this.ground?.reset({ contact: false });
     this.groundState = this.ground?.getStatus(this.state, this.controls) ?? null;
+    this.instructorMonitor?.update(this, 0);
     this.updateMapZoom(1);
     this.chart.setCenter(0, 0);
     return trim;
@@ -586,6 +683,10 @@ class FlightSimulator {
       coordinateSystem: 'lat/lon degrees; altitude feet MSL; body velocity m/s (forward/right/down)',
       mode: {
         paused: this.paused,
+        client: this.clients.activeId,
+        threeDStyle: this.clients.getStyle(),
+        threeDCamera: this.clients.getCamera(),
+        availableClients: this.clients.order,
         helpVisible: this.showHelp,
         helpSection: this.helpPanel.activeSection,
         configuration: this.configPanel.getState(),
@@ -598,6 +699,11 @@ class FlightSimulator {
         vectorMode: this.vectors.vectorMode,
         zoom: round(this.chart.zoom, 1),
         requestedZoom: round(this.chart.requestedZoom, 1),
+        mapPan: this.chart.getPanOffset(),
+        cameraLook: this.clients.getLook(),
+        pointerMode: this.input.rightPointer
+          ? (this.clients.activeId === 'vector-3d' ? 'look' : 'pan')
+          : 'idle',
         groundZoomActive: this.groundState?.contact === true,
         simulationClock: this.simulationClockMode
       },
@@ -633,6 +739,9 @@ class FlightSimulator {
         flapsDeg: round(this.controls.flaps * this.specs.flapMaxDeg, 1),
         elevatorTrim: round(this.input.elevatorTrim)
       },
+      input: {
+        joystick: this.input.getJoystickState()
+      },
       wind: {
         directionFromDeg: round((this.wind.direction + 360) % 360, 1),
         speedKt: round(this.wind.speed, 1)
@@ -642,6 +751,7 @@ class FlightSimulator {
         obsDeg: this.vorNav?.obs ?? null,
         selectedAirport: this.airportNav?.selectedAirport?.id ?? null,
         activeRunway: metrics.activeRunwayId,
+        runwayLocked: this.airportNav?.runwaySelectionLocked ?? false,
         heightAboveSelectedAirportFt: metrics.heightAboveSelectedAirportFt === null
           ? null
           : round(metrics.heightAboveSelectedAirportFt, 1),
@@ -720,6 +830,7 @@ class FlightSimulator {
       },
       autopilot: controller,
       instructor: this.instructorOverlay.getState(this.flightTime),
+      instructorMonitor: this.instructorMonitor.getState(),
       recorder,
       forcesNewtons: components ? {
         lift: round(components.lift, 1),
@@ -741,6 +852,90 @@ class FlightSimulator {
     this.stallWarning.update(this.envelopeState, {
       muted: this.paused || this.configPanel.isOpen
     });
+
+    this.clients.render();
+
+    const palette = this.clients.getPalette() ?? this.chart.palette;
+    this.instructorOverlay.draw(
+      this.chart.ctx,
+      this.canvas,
+      palette,
+      this.flightTime
+    );
+
+    if (this.paused && !this.configPanel.isOpen && !this.showHelp) {
+      this.drawPauseOverlay(palette);
+    }
+
+    if (this.showHelp) {
+      this.helpPanel.draw(this.chart.ctx, this.canvas);
+    }
+
+    this.configPanel.draw(this.chart.ctx, this.canvas);
+  }
+
+  drawSharedHudUnderlay() {
+    // These references belong behind force vectors in every visual client.
+    this.instruments.drawAttitudeIndicator(this.state);
+    this.ilsOverlay.draw(calculateFlightMetrics(this).ils);
+  }
+
+  getAirportNavigationData() {
+    if (!this.airportNav?.selectedAirport) return null;
+    const groundVelocity = calculateGroundVelocity(
+      this.state.velocity,
+      this.state.orientation,
+      {
+        north: this.wind.windNorth,
+        east: this.wind.windEast,
+        down: this.wind.windDown
+      }
+    );
+    return this.airportNav.getNavigationData(
+      this.state.position.lat,
+      this.state.position.lon,
+      this.state.orientation.yaw,
+      getHorizontalSpeed(groundVelocity) * MS_TO_KNOTS,
+      this.wind.direction
+    );
+  }
+
+  drawClientModeIndicator() {
+    const is3D = this.clients.activeId === 'vector-3d';
+    const client = is3D ? 'VECTOR 3D' : 'ASCII';
+    const camera = is3D ? ` | CAM ${this.clients.getCamera().toUpperCase()} [J]` : '';
+    const theme = this.chart.theme.replaceAll('-', ' ').toUpperCase();
+    drawAsciiText(
+      this.chart.ctx,
+      `CLIENT ${client} [K]${camera} | THEME ${theme} [Y]`,
+      this.canvas.width / 2,
+      this.canvas.height - 16,
+      {
+        color: this.chart.palette.foreground,
+        haloColor: this.chart.palette.panelSolid,
+        font: '10px "B612 Mono", monospace',
+        align: 'center',
+        baseline: 'alphabetic'
+      }
+    );
+  }
+
+  drawSharedHudOverlay() {
+    this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
+    this.chart.drawAirportNavInfo(this.getAirportNavigationData());
+    this.vectors.drawStateVectors(this.state, this.controls, this.input, this.lastForces);
+    this.instruments.drawThrottleIndicator(this.controls.throttle);
+    this.instruments.drawGroundStatus(this.groundState);
+    this.instruments.drawEnvelopeStatus(this.envelopeState, this.controls, this.specs);
+    this.energyDiagram.draw(this.state);
+    this.vectors.drawVectorModeIndicator();
+    this.chart.drawRotationModeIndicator();
+    this.drawClientModeIndicator();
+    this.chart.drawFlightTimer(this.flightTime);
+    this.input.drawCrosshair();
+  }
+
+  renderAsciiClient() {
 
     // Update aircraft heading for track-up mode
     this.chart.aircraftHeading = this.state.orientation.yaw;
@@ -812,26 +1007,6 @@ class FlightSimulator {
 
     // Draw airport navigation aids if airport is selected
     if (this.airportNav && this.airportNav.selectedAirport) {
-      const groundVelocity = calculateGroundVelocity(
-        this.state.velocity,
-        this.state.orientation,
-        {
-          north: this.wind.windNorth,
-          east: this.wind.windEast,
-          down: this.wind.windDown
-        }
-      );
-      const groundSpeed = getHorizontalSpeed(groundVelocity) * MS_TO_KNOTS;
-
-      // Get navigation data
-      const airportNavData = this.airportNav.getNavigationData(
-        this.state.position.lat,
-        this.state.position.lon,
-        this.state.orientation.yaw,
-        groundSpeed,
-        this.wind.direction
-      );
-
       // Draw direct-to line
       this.chart.drawDirectToLine(
         this.state.position.lat,
@@ -839,84 +1014,25 @@ class FlightSimulator {
         this.airportNav.selectedAirport.lat,
         this.airportNav.selectedAirport.lon
       );
-
-      // Draw navigation info box
-      this.chart.drawAirportNavInfo(airportNavData);
     }
 
-    // Draw the roll-rotated pitch horizon beneath HUD text and vector labels.
-    this.instruments.drawAttitudeIndicator(this.state);
-
-    // Full-screen localizer and glideslope needles stay beneath force vectors.
-    this.ilsOverlay.draw(calculateFlightMetrics(this).ils);
-
-    this.chart.drawInstruments(this.state, this.chart.zoom, this.wind);
+    this.drawSharedHudUnderlay();
 
     // Draw force vectors
     if (this.lastForces) {
       this.vectors.drawForceVectors(this.state, this.lastForces, this.wind);
     }
 
-    // Draw state vectors (top-right)
-    this.vectors.drawStateVectors(this.state, this.controls, this.input, this.lastForces);
-
-    // Keep commanded engine power visible beside the screen-center aircraft.
-    this.instruments.drawThrottleIndicator(this.controls.throttle);
-
-    // Runway contact, braking, and landing evaluation status.
-    this.instruments.drawGroundStatus(this.groundState);
-
-    // Stall, spin, structural-load, flap, and ground-effect status.
-    this.instruments.drawEnvelopeStatus(
-      this.envelopeState,
-      this.controls,
-      this.specs
-    );
-
-    // Draw vector mode indicator (bottom-left)
-    this.vectors.drawVectorModeIndicator();
-
     // Draw aircraft last (on top)
     this.chart.drawAircraft(this.state);
 
-    // Draw rotation mode indicator
-    this.chart.drawRotationModeIndicator();
+    this.drawSharedHudOverlay();
 
-    // Draw flight timer
-    this.chart.drawFlightTimer(this.flightTime);
-
-    // Draw energy diagram (bottom of screen)
-    this.energyDiagram.draw(this.state);
-
-    // Draw crosshair (very last, on top of everything)
-    this.input.drawCrosshair();
-
-    // Short in-world instructions remain visible without switching to chat.
-    this.instructorOverlay.draw(
-      this.chart.ctx,
-      this.canvas,
-      this.chart.palette,
-      this.flightTime
-    );
-
-    // Draw pause indicator
-    if (this.paused && !this.configPanel.isOpen && !this.showHelp) {
-      this.drawPauseOverlay();
-    }
-
-    // Draw help overlay
-    if (this.showHelp) {
-      this.helpPanel.draw(this.chart.ctx, this.canvas);
-    }
-
-    // Configuration is always the topmost full-screen surface.
-    this.configPanel.draw(this.chart.ctx, this.canvas);
   }
 
-  drawPauseOverlay() {
+  drawPauseOverlay(palette = this.chart.palette) {
     const ctx = this.chart.ctx;
     const canvas = this.chart.canvas;
-    const palette = this.chart.palette;
     const centerX = canvas.width / 2;
     const y = 105;
 
@@ -1199,6 +1315,7 @@ class FlightSimulator {
 function startSimulator() {
   const simulator = new FlightSimulator();
   window.flightSimulator = simulator;
+  window.flightSimulatorSession = simulator.session;
   window.render_game_to_text = () => simulator.renderGameToText();
   window.advanceTime = milliseconds => simulator.advanceTime(milliseconds);
 

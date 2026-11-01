@@ -1,9 +1,9 @@
 # Flight Simulator
 
 A browser-based, six-degrees-of-freedom flight simulator where the physics are
-the graphics. Fly a Cessna 172 using only the forces, velocities, navigation
-geometry, and flight-state data acting on the aircraft—there is no conventional
-outside view.
+the graphics. Fly a Cessna 172 through interchangeable clients: the original
+ASCII navigation chart or a perspective Vector 3D cockpit. Both render exactly
+the same forces, navigation systems, controls, recorder, and live engine state.
 
 **[Fly the live simulator](https://stellan-flight-sim.netlify.app)**
 
@@ -49,6 +49,16 @@ explicit link—to open the full-resolution, silent MP4 file.
 
 ## Features
 
+- **One Engine, Multiple Clients**: Change visualization without resetting flight
+  - Original ASCII chart client remains the default
+  - Vector 3D projects terrain grid, runways, obstacles, ILS, and force vectors
+  - All fifteen themes are shared by the ASCII map, consoles, and Vector 3D
+  - Both clients share the complete flight, control, navigation, energy, and status HUD
+  - Cockpit, chase, and airport tower cameras share the same live flight
+  - Hold the right mouse button to pan the map or look freely in any 3D camera
+  - `K` changes client, `J` changes camera, and `Y` changes the shared theme
+  - URL selection: `?client=3d&style=nord&camera=chase`
+
 - **Realistic Flight Dynamics**: Cessna 172 Skyhawk with authentic aerodynamics
   - 6DOF physics simulation with RK4 integration
   - Accurate lift, drag, and thrust calculations
@@ -67,7 +77,7 @@ explicit link—to open the full-resolution, silent MP4 file.
   - Theme-aware needles, ASCII status, telemetry, MCP access, and an `I` toggle
 
 - **Aviation Chart Rendering**: Professional-style navigation charts
-  - 14 live themes, with black and white as the default
+  - 15 live themes, including Blueprint, with black and white as the default
   - Paper, night, phosphor, amber, GitHub, Nord, Dracula, Solarized, Gruvbox,
     Tokyo Night, and Catppuccin palettes
   - Airport symbols with runway diagrams
@@ -137,11 +147,16 @@ flight-sim/
 └── src/
     ├── main.js                # Entry point and game loop
     ├── config.js              # Configuration constants
+    ├── clients/
+    │   ├── ascii-map-client.js # Compatibility client for the original display
+    │   ├── client-manager.js   # Runtime client selection
+    │   └── vector-3d-client.js # Perspective vector cockpit and aesthetics
     ├── integrations/
     │   ├── mcp-adapter.js     # Deliberate simulator read/write API
     │   └── mcp-bridge.js      # Browser-to-MCP WebSocket connection
     ├── core/                  # Physics simulation
     │   ├── aircraft.js        # Aircraft state and specs
+    │   ├── simulation-session.js # Renderer-neutral command/state boundary
     │   ├── flight-envelope.js # Stall, spin, damage, and recovery state
     │   ├── flight-controller.js # Internal high-level flight controllers
     │   ├── flight-metrics.js  # Instructor and navigation telemetry
@@ -220,11 +235,12 @@ Keep `npm run mcp` running while using the tools. This HTTP arrangement lets
 the browser and MCP client share the same live simulator process without two
 processes competing for port 3005.
 
-The server provides 26 tools, five JSON resources, and two reusable prompts.
+The server provides 27 tools, five JSON resources, and two reusable prompts.
 The main operations are:
 
 ```text
 get_flight_state       get_force_vectors       get_navigation_state
+wait_for_flight_change
 get_nearby_airports    get_configuration       get_landing_history
 pause_flight           resume_flight           reset_flight
 set_controls           set_wind                select_airport
@@ -240,11 +256,18 @@ and human-timescale control. Heading, altitude, airspeed, waypoint, pattern,
 and approach regulators run continuously inside the game. Keyboard flight
 input immediately returns ownership to the human pilot.
 
+The MCP flight instructor gives one short, specific action at a time. A local
+one-second monitor detects meaningful phase, risk, navigation, speed, height,
+direction, and attitude changes. The instructor waits with
+`wait_for_flight_change`, then states current and desired values in plain
+language without abbreviations or aviation jargon.
+
 The timestamped recorder samples the live simulation at 10 Hz and can be
 started, stopped, cleared, inspected, or exported through `flight_recorder`.
-Telemetry includes ground track, flight-path angle, turn rate, sideslip,
-height above the selected airport, pattern altitude MSL, and runway-centerline
-distance. The navigation state also exposes localizer and glideslope errors,
+Each recorder sample includes wind, locked runway, runway-centreline distance,
+ILS deviations and capture, ground surface/contact, brakes, trim, warning state,
+and the visible instructor message in addition to aircraft motion. The live
+navigation state also exposes localizer and glideslope errors,
 dot deflections, target altitude, and capture state for the selected airport's
 active runway. Outside airport surfaces, AGL uses a continuous terrain estimate
 interpolated from the chart's known field elevations; adding a real terrain
@@ -278,17 +301,31 @@ npm run check
 - **B**: Hold wheel brakes
 - **Page Up/Down**: Elevator trim
 - **Home**: Reset elevator trim
+- **Joystick/Gamepad**: Move an axis once to activate the connected controller
+  - Default axes: roll 0, pitch 1, rudder 2, throttle 3
+  - Default buttons: brake 0, flaps 1, trim down 4, trim up 5
+  - Deadzone, inversion, axis indices, and button indices are editable under `CONTROLS`
 
 ### Navigation
-- **Right-click on VOR**: Tune VOR station (plays morse code)
+- **Right-click on VOR**: Tune VOR station in the ASCII map (plays morse code)
+- **Hold right mouse button and drag**: Pan the ASCII map
 - **Q/E**: Adjust OBS course ±10°
 - **L / Shift+L**: Cycle airports / clear the airport selection
 
 ### View Controls
 - **Mouse Wheel**: Zoom in/out
+- **Hold right mouse button and drag**: Look around in Vector 3D
 - **N/T**: Toggle map mode (North-up / Track-up)
 - **1/2/3/4**: Select the 1×/3×/5×/10× zoom preset
 - **V**: Cycle all, energy, and navigation vector overlays
+- **K**: Switch between the ASCII and Vector 3D clients
+- **J**: Cycle the Cockpit, Chase, and Tower cameras
+- **Y**: Cycle the shared theme in both ASCII and Vector 3D
+
+The selected client, 3D camera, and shared theme are also available under
+`DISPLAY` in the configuration console and through MCP `set_display`. Switching
+views does not restart, pause, or clone the flight engine. Legacy style names in
+old URLs are mapped to their closest shared theme.
 
 ### Simulation
 - **P / Space**: Pause/resume simulation

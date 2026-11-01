@@ -136,14 +136,14 @@ test('enter supports direct numeric editing', () => {
   assert.equal(panel.getState().editing, false);
 });
 
-test('plus cycles the live map theme from the display category', () => {
+test('plus cycles the live shared theme from the display category', () => {
   const simulator = makeSimulator();
   const panel = new ConfigurationPanel(simulator);
   panel.open();
 
   const categories = panel.getCategories();
   panel.categoryIndex = categories.findIndex(category => category.id === 'display');
-  panel.rowIndex = categories[panel.categoryIndex].items.findIndex(item => item.label === 'Map theme');
+  panel.rowIndex = categories[panel.categoryIndex].items.findIndex(item => item.label === 'Theme');
   panel.handleKey({ key: '+', shiftKey: false });
 
   assert.equal(simulator.chart.theme, 'night');
@@ -159,6 +159,23 @@ test('display settings expose moment arc magnitude scaling', () => {
   assert.ok(labels.includes('Moment full scale'));
   assert.ok(labels.includes('Moment minimum sweep'));
   assert.ok(labels.includes('Moment maximum sweep'));
+  assert.ok(labels.includes('Rendering client'));
+  assert.ok(labels.includes('Theme'));
+  assert.ok(!labels.includes('3D aesthetic'));
+  assert.ok(labels.includes('3D camera'));
+});
+
+test('control settings expose mouse look and complete joystick mapping', () => {
+  const panel = new ConfigurationPanel(makeSimulator());
+  const controls = panel.getCategories().find(category => category.id === 'controls');
+  const labels = controls.items.map(item => item.label).filter(Boolean);
+
+  assert.ok(labels.includes('Mouse look sensitivity'));
+  assert.ok(labels.includes('Joystick enabled'));
+  assert.ok(labels.includes('Roll axis'));
+  assert.ok(labels.includes('Throttle axis'));
+  assert.ok(labels.includes('Brake button'));
+  assert.ok(labels.includes('Trim nose-up button'));
 });
 
 test('configuration console renders with the active chart palette', () => {

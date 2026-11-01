@@ -46,13 +46,15 @@ export class HelpPanel {
           ['B', 'Hold wheel brakes'],
           ['F', 'Cycle flaps 0 / 10 / 20 / 30 deg'],
           ['PGUP / PGDN', 'Elevator trim nose down / nose up'],
-          ['HOME', 'Reset elevator trim']
+          ['HOME', 'Reset elevator trim'],
+          ['JOYSTICK', 'Move once to activate; axes and buttons are configurable']
         ]
       },
       {
         label: 'NAVIGATION',
         entries: [
-          ['RIGHT CLICK', 'Tune the VOR under the pointer'],
+          ['RIGHT DRAG', 'Pan the ASCII map or look around in Vector 3D'],
+          ['RIGHT CLICK', 'Tune the VOR under the pointer in map mode'],
           ['Q / E', 'Adjust OBS course by 10 deg'],
           ['L', 'Cycle direct-to airports'],
           ['SHIFT + L', 'Clear direct-to airport'],
@@ -76,6 +78,9 @@ export class HelpPanel {
           ['P / SPACE', 'Pause or resume simulation'],
           ['H / ?', 'Open or close this manual'],
           ['C / ENTER', 'Open the full configuration terminal'],
+          ['K', 'Switch between ASCII map and Vector 3D clients'],
+          ['J', 'Cycle cockpit, chase and tower cameras'],
+          ['Y', 'Cycle shared visual theme'],
           ['V', 'Cycle vector display modes'],
           ['SCROLL', 'Mouse wheel, arrows, PgUp/PgDn, Home/End']
         ]
