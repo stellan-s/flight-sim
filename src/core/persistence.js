@@ -8,7 +8,14 @@ const INPUT_KEYS = [
   'pitchRate', 'rollRate', 'rudderRate', 'throttleRate', 'trimRate',
   'elevatorReturnRate', 'aileronReturnRate', 'rudderReturnRate',
   'elevatorAirborneReturnRate',
-  'trimMin', 'trimMax', 'elevatorTrim'
+  'trimMin', 'trimMax', 'elevatorTrim',
+  'mouseLookSensitivity', 'mapPanSensitivity',
+  'joystickEnabled', 'joystickDeadzone', 'joystickActivationThreshold',
+  'joystickRollAxis', 'joystickPitchAxis', 'joystickRudderAxis',
+  'joystickThrottleAxis', 'joystickRollInverted', 'joystickPitchInverted',
+  'joystickRudderInverted', 'joystickThrottleReversed',
+  'joystickBrakeButton', 'joystickFlapsButton',
+  'joystickTrimDownButton', 'joystickTrimUpButton'
 ];
 
 const WIND_KEYS = [
@@ -92,7 +99,10 @@ export class PersistenceManager {
         theme: simulator.chart?.theme,
         zoom: simulator.chart?.requestedZoom ?? simulator.chart?.zoom,
         rotationMode: simulator.chart?.rotationMode,
-        vectorMode: simulator.vectors?.vectorMode
+        vectorMode: simulator.vectors?.vectorMode,
+        client: simulator.clients?.activeId,
+        threeDStyle: simulator.clients?.getStyle?.(),
+        threeDCamera: simulator.clients?.getCamera?.()
       },
       energy: {
         ...selectedProperties(simulator.energyDiagram, ENERGY_KEYS),
@@ -123,8 +133,17 @@ export class PersistenceManager {
     }
 
     if (snapshot.display) {
+      let sharedThemeApplied = false;
       if (typeof snapshot.display.theme === 'string') {
-        simulator.chart?.setTheme(snapshot.display.theme);
+        const applied = simulator.chart?.setTheme(snapshot.display.theme);
+        sharedThemeApplied = applied !== false;
+        if (sharedThemeApplied) {
+          try {
+            simulator.clients?.setStyle(snapshot.display.theme);
+          } catch {
+            // The chart remains authoritative if a legacy client lacks this theme.
+          }
+        }
       }
       if (Number.isFinite(snapshot.display.zoom)) {
         simulator.chart?.setZoom(snapshot.display.zoom);
@@ -134,6 +153,23 @@ export class PersistenceManager {
       }
       if (['all', 'energy', 'nav'].includes(snapshot.display.vectorMode)) {
         simulator.vectors.vectorMode = snapshot.display.vectorMode;
+      }
+      if (['ascii', 'vector-3d'].includes(snapshot.display.client)) {
+        simulator.clients?.select(snapshot.display.client);
+      }
+      if (!sharedThemeApplied && typeof snapshot.display.threeDStyle === 'string') {
+        try {
+          simulator.clients?.setStyle(snapshot.display.threeDStyle);
+        } catch {
+          // Ignore styles from a newer or incompatible client version.
+        }
+      }
+      if (typeof snapshot.display.threeDCamera === 'string') {
+        try {
+          simulator.clients?.setCamera(snapshot.display.threeDCamera);
+        } catch {
+          // Ignore cameras from a newer or incompatible client version.
+        }
       }
     }
 

@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { CHART_THEME_NAMES } from '../rendering/chart-themes.js';
+import { VECTOR_3D_CAMERA_IDS } from '../clients/vector-3d-client.js';
 
 const RAD_TO_DEG = 180 / Math.PI;
 const DEG_TO_RAD = Math.PI / 180;
@@ -368,8 +369,63 @@ export class ConfigurationPanel {
     categories.push({
       id: 'controls',
       label: 'CONTROLS',
-      description: 'Pilot input rates, centering behavior and numerical safety limits.',
+      description: 'Pointer, joystick, keyboard rates, centering behavior and safety limits.',
       items: [
+        heading('POINTER'),
+        numericProperty(input, 'mouseLookSensitivity', 'Mouse look sensitivity', {
+          step: 0.0005, min: 0.0005, max: 0.02, precision: 4, unit: 'rad/px'
+        }),
+        numericProperty(input, 'mapPanSensitivity', 'Map pan sensitivity', {
+          step: 0.1, min: 0.1, max: 5, precision: 1
+        }),
+        heading('JOYSTICK / GAMEPAD'),
+        boolItem('Joystick enabled', () => input.joystickEnabled,
+          value => { input.joystickEnabled = value; }),
+        readonlyItem('Detected joystick', () => {
+          const status = input.getJoystickState();
+          if (!status.connected) return 'NONE';
+          return `${status.active ? 'ACTIVE' : 'MOVE TO ACTIVATE'} | ${status.id}`;
+        }),
+        numericProperty(input, 'joystickDeadzone', 'Axis deadzone', {
+          step: 0.01, min: 0, max: 0.5, precision: 2
+        }),
+        numericProperty(input, 'joystickActivationThreshold', 'Activation movement', {
+          step: 0.01, min: 0.01, max: 1, precision: 2
+        }),
+        heading('JOYSTICK AXES (-1 DISABLES)'),
+        numericProperty(input, 'joystickRollAxis', 'Roll axis', {
+          step: 1, min: -1, max: 15, precision: 0
+        }),
+        numericProperty(input, 'joystickPitchAxis', 'Pitch axis', {
+          step: 1, min: -1, max: 15, precision: 0
+        }),
+        numericProperty(input, 'joystickRudderAxis', 'Rudder axis', {
+          step: 1, min: -1, max: 15, precision: 0
+        }),
+        numericProperty(input, 'joystickThrottleAxis', 'Throttle axis', {
+          step: 1, min: -1, max: 15, precision: 0
+        }),
+        boolItem('Invert roll axis', () => input.joystickRollInverted,
+          value => { input.joystickRollInverted = value; }),
+        boolItem('Invert pitch axis', () => input.joystickPitchInverted,
+          value => { input.joystickPitchInverted = value; }),
+        boolItem('Invert rudder axis', () => input.joystickRudderInverted,
+          value => { input.joystickRudderInverted = value; }),
+        boolItem('Reverse throttle axis', () => input.joystickThrottleReversed,
+          value => { input.joystickThrottleReversed = value; }),
+        heading('JOYSTICK BUTTONS (-1 DISABLES)'),
+        numericProperty(input, 'joystickBrakeButton', 'Brake button', {
+          step: 1, min: -1, max: 31, precision: 0
+        }),
+        numericProperty(input, 'joystickFlapsButton', 'Flaps button', {
+          step: 1, min: -1, max: 31, precision: 0
+        }),
+        numericProperty(input, 'joystickTrimDownButton', 'Trim nose-down button', {
+          step: 1, min: -1, max: 31, precision: 0
+        }),
+        numericProperty(input, 'joystickTrimUpButton', 'Trim nose-up button', {
+          step: 1, min: -1, max: 31, precision: 0
+        }),
         heading('INPUT RATES'),
         numericProperty(input, 'pitchRate', 'Pitch input rate', { step: 0.05, min: 0, max: 20, precision: 2, unit: '/s' }),
         numericProperty(input, 'rollRate', 'Roll input rate', { step: 0.05, min: 0, max: 20, precision: 2, unit: '/s' }),
@@ -459,8 +515,11 @@ export class ConfigurationPanel {
         numericProperty(CONFIG, 'CRASH_SINK_RATE_FPM', 'Crash sink threshold', { step: 10, min: 0, max: 10000, unit: 'ft/min' }),
         numericProperty(CONFIG, 'CRASH_BANK_DEG', 'Crash bank threshold', { step: 1, min: 0, max: 180, unit: 'deg' }),
         numericProperty(CONFIG, 'CRASH_PITCH_DEG', 'Crash pitch threshold', { step: 1, min: 0, max: 180, unit: 'deg' }),
+        numericProperty(CONFIG, 'LANDING_SETTLE_SECONDS', 'Landing settle time', { step: 0.05, min: 0.1, max: 10, precision: 2, unit: 's' }),
+        numericProperty(CONFIG, 'LANDING_REBOUND_WINDOW_SECONDS', 'Rebound window', { step: 0.5, min: 1, max: 30, precision: 1, unit: 's' }),
         heading('LAST LANDING'),
-        readonlyItem('Result', () => sim.groundState?.lastReport?.quality ?? 'NONE'),
+        readonlyItem('Impact', () => sim.groundState?.lastReport?.impactQuality ?? 'NONE'),
+        readonlyItem('Surface result', () => sim.groundState?.lastReport?.surfaceResult ?? 'NONE'),
         readonlyItem('Score', () => sim.groundState?.lastReport?.score ?? 0),
         readonlyItem('Sink rate', () => sim.groundState?.lastReport?.sinkRateFpm ?? 0, 'ft/min'),
         actionItem('RESPAWN ON CONFIGURED RUNWAY', () => sim.resetConfiguredFlight(),
@@ -575,7 +634,7 @@ export class ConfigurationPanel {
         heading('LANDING HISTORY'),
         readonlyItem('Recorded landings', () => landingHistory.length),
         readonlyItem('Last result', () => lastLanding
-          ? `${lastLanding.quality} ${lastLanding.score}/100 ${lastLanding.sinkRateFpm}fpm`
+          ? `${lastLanding.impactQuality ?? lastLanding.quality} ${lastLanding.surfaceResult ?? (lastLanding.onRunway === false ? 'OFF_RUNWAY' : 'RUNWAY')} ${lastLanding.score}/100 ${lastLanding.sinkRateFpm}fpm`
           : 'NONE'),
         actionItem('CLEAR LANDING HISTORY', () => {
           if (!persistence?.clearLandingHistory()) throw new Error(persistence?.lastError || 'Clear failed');
@@ -589,12 +648,19 @@ export class ConfigurationPanel {
       label: 'DISPLAY',
       description: 'Chart transform, overlays, vector scaling and instrument layout.',
       items: [
+        heading('CLIENT'),
+        enumItem('Rendering client', () => sim.clients?.activeId ?? 'ascii',
+          value => sim.clients?.select(value), ['ascii', 'vector-3d'],
+          'Both clients read the same running physics session.'),
+        enumItem('3D camera', () => sim.clients?.getCamera() ?? CONFIG.DEFAULT_3D_CAMERA,
+          value => sim.clients?.setCamera(value), VECTOR_3D_CAMERA_IDS,
+          'Cockpit follows attitude; chase follows the aircraft; tower tracks it from the airport.'),
         heading('CHART'),
-        enumItem('Default map theme', () => CONFIG.DEFAULT_MAP_THEME,
+        enumItem('Default theme', () => CONFIG.DEFAULT_MAP_THEME,
           value => { CONFIG.DEFAULT_MAP_THEME = value; }, CHART_THEME_NAMES),
-        enumItem('Map theme', () => sim.chart.theme,
+        enumItem('Theme', () => sim.chart.theme,
           value => sim.chart.setTheme(value), CHART_THEME_NAMES,
-          'Complete live chart palette: background, grid, labels and navigation colors.'),
+          'One live palette shared by the ASCII map, settings, help, and Vector 3D client.'),
         numericProperty(CONFIG, 'DEFAULT_ZOOM', 'Default zoom', { step: 0.1, min: 0.01, max: 1000, precision: 1, unit: 'x' }),
         enumItem('Default map rotation', () => CONFIG.DEFAULT_ROTATION_MODE,
           value => { CONFIG.DEFAULT_ROTATION_MODE = value; }, ['north-up', 'track-up']),
