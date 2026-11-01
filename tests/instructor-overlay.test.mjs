@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { InstructorOverlay } from '../src/ui/instructor-overlay.js';
+import {
+  INSTRUCTOR_SUBTITLE_BACKGROUND,
+  INSTRUCTOR_SUBTITLE_TEXT,
+  InstructorOverlay
+} from '../src/ui/instructor-overlay.js';
 import { getChartTheme } from '../src/rendering/chart-themes.js';
 
 function context(operations) {
@@ -26,9 +30,26 @@ test('instructor draws a high-contrast borderless subtitle strip', () => {
   overlay.draw(context(operations), { width: 1280, height: 720 }, palette, 20);
 
   assert.ok(operations.some(([name, color]) =>
-    name === 'fillRect' && color === palette.foreground));
+    name === 'fillRect' && color === INSTRUCTOR_SUBTITLE_BACKGROUND));
   assert.ok(operations.some(([name, color, text]) =>
-    name === 'fillText' && color === palette.background && text.includes('HOLD 75 KNOTS')));
+    name === 'fillText' && color === INSTRUCTOR_SUBTITLE_TEXT && text.includes('HOLD 75 KNOTS')));
+});
+
+test('instructor subtitle colors stay stable across themes and warning levels', () => {
+  for (const theme of ['black-white', 'nord', 'amber']) {
+    const operations = [];
+    const overlay = new InstructorOverlay();
+    overlay.show('Reduce angle of attack.', {
+      level: 'warning',
+      durationSeconds: 60
+    }, 0);
+    overlay.draw(context(operations), { width: 1280, height: 720 }, getChartTheme(theme), 1);
+
+    assert.ok(operations.some(([name, color]) =>
+      name === 'fillRect' && color === INSTRUCTOR_SUBTITLE_BACKGROUND));
+    assert.ok(operations.some(([name, color]) =>
+      name === 'fillText' && color === INSTRUCTOR_SUBTITLE_TEXT));
+  }
 });
 
 test('instructor wraps long subtitles and stops drawing after expiry', () => {

@@ -94,8 +94,14 @@ test('eval: runway landing produces one deterministic scored touchdown', () => {
   ground.hasBeenAirborne = true;
   ground.landingArmed = true;
 
-  const status = ground.update(1 / 60, state, controls, {});
+  const contact = ground.update(1 / 60, state, controls, {});
+  let status = contact;
+  for (let i = 0; i < 60; i++) {
+    const next = ground.update(1 / 60, state, controls, {});
+    if (next.event?.type === 'touchdown') status = next;
+  }
 
+  assert.equal(contact.event, null);
   assert.equal(status.event.type, 'touchdown');
   assert.equal(status.lastReport.onRunway, true);
   assert.ok(status.lastReport.score > 0);

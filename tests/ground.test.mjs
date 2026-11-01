@@ -27,6 +27,15 @@ function makeGround() {
   return new GroundSystem(features, new AircraftSpecs(), { ...CONFIG });
 }
 
+function settleLanding(ground, state, controls, seconds = 1) {
+  let touchdown = null;
+  for (let i = 0; i < Math.ceil(seconds * 60); i++) {
+    const status = ground.update(1 / 60, state, controls, {});
+    if (status.event?.type === 'touchdown') touchdown = status;
+  }
+  return touchdown;
+}
+
 test('runway spawn uses the selected end, field elevation, and zero ground speed', () => {
   const ground = makeGround();
   const state = new AircraftState();
@@ -40,6 +49,8 @@ test('runway spawn uses the selected end, field elevation, and zero ground speed
   assert.ok(Math.abs(state.orientation.yaw - 3 * Math.PI / 2) < 1e-12);
   assert.equal(state.position.altitude, 725 + CONFIG.GEAR_HEIGHT_FT);
   assert.ok(Math.hypot(groundVelocity.north, groundVelocity.east, groundVelocity.down) < 1e-10);
+  assert.equal(ground.surface.onRunway, true);
+  assert.ok(Math.abs(ground.surface.crossMeters) < 1e-9);
   assert.equal(ground.contact, true);
   assert.equal(controls.throttle, 0);
 });
@@ -169,15 +180,18 @@ test('touchdown is graded and captures runway landing data', () => {
   state.velocity = { u: 28, v: 0, w: 2.4 };
   ground.hasBeenAirborne = true;
 
-  const status = ground.update(1 / 60, state, controls, { north: 0, east: 0, down: 0 });
+  const contact = ground.update(1 / 60, state, controls, { north: 0, east: 0, down: 0 });
+  const status = settleLanding(ground, state, controls);
 
+  assert.equal(contact.event, null);
+  assert.equal(contact.phase, 'landing');
   assert.equal(status.event.type, 'touchdown');
   assert.equal(status.lastReport.airportId, 'KTEST');
   assert.equal(status.lastReport.runwayId, '09/27');
   assert.equal(status.lastReport.onRunway, true);
   assert.ok(status.lastReport.score > 0);
   assert.equal(status.crashed, false);
-  assert.ok(status.constraintForceEarth.down < 0);
+  assert.ok(contact.constraintForceEarth.down < 0);
 });
 
 test('hard intermediate contact bounces and excessive sink rate crashes', () => {
@@ -212,4 +226,77 @@ test('hard intermediate contact bounces and excessive sink rate crashes', () => 
     down: 0
   });
   assert.equal(stopped.groundSpeedKt, 0);
+});
+
+test('post-touchdown rebounds remain one landing and preserve the worst contact', () => {
+  const ground = makeGround();
+  const state = new AircraftState();
+  const controls = new Controls();
+  state.position = {
+    lat: 1 + 18 / 111320,
+    lon: 2,
+    altitude: 725 + CONFIG.GEAR_HEIGHT_FT
+  };
+  state.orientation = { pitch: 0, roll: 0, yaw: Math.PI / 2 };
+  state.velocity = { u: 30, v: 0, w: 1.5 };
+  ground.hasBeenAirborne = true;
+  ground.landingArmed = true;
+  const events = [];
+
+  let status = ground.update(1 / 60, state, controls, {});
+  if (status.event) events.push(status.event.type);
+  assert.equal(status.phase, 'landing');
+
+  for (let i = 0; i < 12; i++) {
+    status = ground.update(1 / 60, state, controls, {}, {
+      body: { X: 0, Y: 0, Z: -500 }
+    });
+    if (status.event) events.push(status.event.type);
+    if (status.event?.type === 'bounce') break;
+  }
+  assert.equal(events.at(-1), 'bounce');
+
+  state.position.altitude = 725 + CONFIG.GEAR_HEIGHT_FT;
+  state.velocity = { u: 28, v: 0, w: 1.85 };
+  status = ground.update(1 / 60, state, controls, {});
+  if (status.event) events.push(status.event.type);
+  assert.equal(status.event.type, 'bounce');
+
+  state.position.altitude = 725 + CONFIG.GEAR_HEIGHT_FT;
+  state.velocity = { u: 27, v: 0, w: 0.01 };
+  status = ground.update(1 / 60, state, controls, {});
+  if (status.event) events.push(status.event.type);
+  const settled = settleLanding(ground, state, controls);
+  if (settled?.event) events.push(settled.event.type);
+
+  assert.equal(events.includes('takeoff'), false);
+  assert.equal(events.filter(type => type === 'touchdown').length, 1);
+  assert.equal(settled.lastReport.contactCount, 3);
+  assert.equal(settled.lastReport.bounceCount, 2);
+  assert.equal(settled.lastReport.impactQuality, 'FIRM');
+  assert.equal(settled.lastReport.surfaceResult, 'OFF_RUNWAY');
+  assert.equal(settled.lastReport.safe, false);
+});
+
+test('off-runway surface result does not relabel a smooth impact as hard', () => {
+  const ground = makeGround();
+  const state = new AircraftState();
+  const controls = new Controls();
+  state.position = {
+    lat: 1 + 18 / 111320,
+    lon: 2,
+    altitude: 725 + CONFIG.GEAR_HEIGHT_FT
+  };
+  state.orientation = { pitch: 4 * Math.PI / 180, roll: 0, yaw: Math.PI / 2 };
+  state.velocity = { u: 0, v: 0, w: 0.01 };
+  ground.hasBeenAirborne = true;
+  ground.landingArmed = true;
+
+  ground.update(1 / 60, state, controls, {});
+  const settled = settleLanding(ground, state, controls);
+
+  assert.equal(settled.lastReport.impactQuality, 'SMOOTH');
+  assert.equal(settled.lastReport.quality, 'SMOOTH');
+  assert.equal(settled.lastReport.surfaceResult, 'OFF_RUNWAY');
+  assert.equal(settled.lastReport.onRunway, false);
 });

@@ -54,6 +54,9 @@ export class GroundSystem {
     this.elapsed = 0;
     this.lastReport = null;
     this.lastEvent = null;
+    this.landingCycle = null;
+    this.contactStableElapsed = 0;
+    this.pendingTakeoffEvent = false;
     this.message = '';
     this.messageUntil = 0;
     this.surface = null;
@@ -72,6 +75,9 @@ export class GroundSystem {
     this.elapsed = 0;
     this.lastReport = null;
     this.lastEvent = null;
+    this.landingCycle = null;
+    this.contactStableElapsed = 0;
+    this.pendingTakeoffEvent = false;
     this.message = contact ? 'LINED UP — RELEASE BRAKES AND APPLY POWER' : '';
     this.messageUntil = contact ? 8 : 0;
     this.constraintForceEarth = { north: 0, east: 0, down: 0 };
@@ -256,7 +262,7 @@ export class GroundSystem {
     const crashed = sinkRateFpm >= this.options.CRASH_SINK_RATE_FPM ||
       rollDeg >= this.options.CRASH_BANK_DEG ||
       Math.abs(pitchDeg) >= this.options.CRASH_PITCH_DEG;
-    const hard = sinkRateFpm >= this.options.HARD_LANDING_SINK_RATE_FPM || offRunway;
+    const hard = sinkRateFpm >= this.options.HARD_LANDING_SINK_RATE_FPM;
 
     let quality = 'SMOOTH';
     if (crashed) quality = 'CRASH';
@@ -269,8 +275,12 @@ export class GroundSystem {
       (offRunway ? 35 : 0)
     ), 0, 100);
 
+    const surfaceResult = offRunway ? 'OFF_RUNWAY' : 'RUNWAY';
     return {
       quality,
+      impactQuality: quality,
+      surfaceResult,
+      safe: !crashed && !offRunway,
       score,
       crashed,
       onRunway: surface.onRunway,
@@ -282,6 +292,70 @@ export class GroundSystem {
       rollDeg: Number(rollDeg.toFixed(1)),
       pitchDeg: Number(pitchDeg.toFixed(1))
     };
+  }
+
+  recordLandingContact(state, surface, sinkRateFpm, groundSpeedMps) {
+    const report = this.evaluateTouchdown(state, surface, sinkRateFpm, groundSpeedMps);
+    if (!this.landingCycle) {
+      this.landingCycle = {
+        startedAt: this.elapsed,
+        lastContactAt: this.elapsed,
+        contacts: [],
+        bounceCount: 0
+      };
+    }
+    this.landingCycle.lastContactAt = this.elapsed;
+    this.landingCycle.contacts.push(report);
+    this.contactStableElapsed = 0;
+    return report;
+  }
+
+  aggregateLandingReport({ touchAndGo = false } = {}) {
+    const contacts = this.landingCycle?.contacts ?? [];
+    if (contacts.length === 0) return null;
+
+    const severity = { SMOOTH: 0, GOOD: 1, FIRM: 2, HARD: 3, CRASH: 4 };
+    const worstImpact = contacts.reduce((worst, contact) =>
+      (severity[contact.impactQuality] ?? 0) > (severity[worst.impactQuality] ?? 0)
+        ? contact
+        : worst
+    );
+    const worstScore = contacts.reduce((worst, contact) =>
+      contact.score < worst.score ? contact : worst
+    );
+    const offRunwayContact = contacts.find(contact => !contact.onRunway);
+    const crashed = contacts.some(contact => contact.crashed);
+    const onRunway = contacts.every(contact => contact.onRunway);
+    const reference = offRunwayContact ?? worstScore;
+
+    return {
+      ...worstScore,
+      quality: crashed ? 'CRASH' : worstImpact.impactQuality,
+      impactQuality: crashed ? 'CRASH' : worstImpact.impactQuality,
+      surfaceResult: onRunway ? 'RUNWAY' : 'OFF_RUNWAY',
+      safe: !crashed && onRunway,
+      crashed,
+      onRunway,
+      airportId: reference.airportId,
+      runwayId: onRunway
+        ? contacts.find(contact => contact.runwayId)?.runwayId ?? null
+        : null,
+      surfaceType: reference.surfaceType,
+      sinkRateFpm: Math.max(...contacts.map(contact => contact.sinkRateFpm)),
+      groundSpeedKt: contacts[0].groundSpeedKt,
+      contactCount: contacts.length,
+      bounceCount: this.landingCycle?.bounceCount ?? 0,
+      touchAndGo
+    };
+  }
+
+  finalizeLanding({ touchAndGo = false } = {}) {
+    const report = this.aggregateLandingReport({ touchAndGo });
+    this.landingCycle = null;
+    this.contactStableElapsed = 0;
+    if (!report) return null;
+    this.lastReport = report;
+    return this.emit(report.crashed ? 'crash' : 'touchdown', report);
   }
 
   emit(type, report = null) {
@@ -303,6 +377,11 @@ export class GroundSystem {
     const sinkRateFpm = Math.max(0, groundVelocity.down * FPM_PER_MPS);
     const clearanceFt = state.position.altitude - contactAltitude;
     let event = null;
+
+    if (this.pendingTakeoffEvent) {
+      this.pendingTakeoffEvent = false;
+      event = this.emit('takeoff');
+    }
 
     if (this.crashed) {
       state.position.altitude = contactAltitude;
@@ -342,17 +421,29 @@ export class GroundSystem {
         10 * Math.PI / 180
       );
       this.contact = false;
-      this.hasBeenAirborne = false;
-      this.landingArmed = false;
-      this.airborneElapsed = 0;
       this.liftCandidateElapsed = 0;
       this.phase = 'airborne';
-      this.message = 'AIRBORNE';
-      this.messageUntil = this.elapsed + 3;
-      event = this.emit('takeoff');
+      if (this.landingCycle) {
+        this.landingCycle.bounceCount += 1;
+        this.landingCycle.lastContactAt = this.elapsed;
+        this.contactStableElapsed = 0;
+        this.message = 'BOUNCE — KEEP THE NOSE CONTROLLED';
+        this.messageUntil = this.elapsed + 4;
+        event = this.emit('bounce', {
+          sinkRateFpm: this.landingCycle.contacts.at(-1)?.sinkRateFpm ?? 0,
+          rebound: true
+        });
+      } else {
+        this.hasBeenAirborne = false;
+        this.landingArmed = false;
+        this.airborneElapsed = 0;
+        this.message = 'AIRBORNE';
+        this.messageUntil = this.elapsed + 3;
+        event = this.emit('takeoff');
+      }
     }
 
-    const touchingSurface = !this.contact && event?.type !== 'takeoff' &&
+    const touchingSurface = !this.contact && !liftingOff && event?.type !== 'takeoff' &&
       clearanceFt <= this.options.GROUND_CONTACT_TOLERANCE_FT &&
       groundVelocity.down >= 0;
 
@@ -364,34 +455,51 @@ export class GroundSystem {
         this.phase = 'ground';
         this.message = 'GROUND CONTACT — TAKEOFF NOT YET ESTABLISHED';
         this.messageUntil = this.elapsed + 2;
-      } else
-      if (this.hasBeenAirborne && sinkRateFpm >= this.options.BOUNCE_SINK_RATE_FPM &&
-          sinkRateFpm < this.options.CRASH_SINK_RATE_FPM) {
-        groundVelocity.down = -groundVelocity.down * 0.28;
-        state.position.altitude = contactAltitude + 0.1;
-        this.applyGroundVelocity(state, groundVelocity, windEarth);
-        this.phase = 'bounce';
-        this.message = `BOUNCE ${Math.round(sinkRateFpm)} FPM`;
-        this.messageUntil = this.elapsed + 4;
-        event = this.emit('bounce', { sinkRateFpm: Math.round(sinkRateFpm) });
-        return this.getStatus(state, controls, groundVelocity, event);
-      }
+      } else {
+        const contactReport = this.recordLandingContact(
+          state,
+          surface,
+          sinkRateFpm,
+          groundSpeed
+        );
 
-      if (this.landingArmed) {
-        this.contact = true;
-        this.phase = 'ground';
-        const report = this.evaluateTouchdown(state, surface, sinkRateFpm, groundSpeed);
-        this.crashed = report.crashed;
-        this.phase = report.crashed ? 'crashed' : 'landed';
-        this.message = report.crashed
-          ? `CRASH — ${report.sinkRateFpm} FPM`
-          : `${report.quality} LANDING ${report.score}/100`;
-        this.messageUntil = Infinity;
-        event = this.emit(report.crashed ? 'crash' : 'touchdown', report);
+        if (contactReport.crashed) {
+          this.contact = true;
+          this.crashed = true;
+          this.phase = 'crashed';
+          this.message = `CRASH — ${contactReport.sinkRateFpm} FPM`;
+          this.messageUntil = Infinity;
+          event = this.finalizeLanding();
+        } else if (this.hasBeenAirborne &&
+          sinkRateFpm >= this.options.BOUNCE_SINK_RATE_FPM) {
+          this.landingCycle.bounceCount += 1;
+          groundVelocity.down = -groundVelocity.down * 0.28;
+          state.position.altitude = contactAltitude + 0.1;
+          this.applyGroundVelocity(state, groundVelocity, windEarth);
+          this.phase = 'bounce';
+          this.message = `BOUNCE ${Math.round(sinkRateFpm)} FPM`;
+          this.messageUntil = this.elapsed + 4;
+          event = this.emit('bounce', { sinkRateFpm: Math.round(sinkRateFpm) });
+          return this.getStatus(state, controls, groundVelocity, event);
+        } else {
+          this.contact = true;
+          this.phase = 'landing';
+          this.message = 'TOUCHDOWN — HOLD THE RUNWAY';
+          this.messageUntil = Infinity;
+        }
       }
     }
 
     if (!this.contact) {
+      const reboundWindow = this.options.LANDING_REBOUND_WINDOW_SECONDS ?? 6;
+      if (!event && this.landingCycle &&
+          this.elapsed - this.landingCycle.lastContactAt >= reboundWindow) {
+        event = this.finalizeLanding({ touchAndGo: true });
+        this.pendingTakeoffEvent = true;
+        this.phase = 'airborne';
+        this.message = 'TOUCH-AND-GO — AIRBORNE';
+        this.messageUntil = this.elapsed + 3;
+      }
       if (clearanceFt > 10 || (clearanceFt > 2 && this.airborneElapsed >= 1)) {
         this.hasBeenAirborne = true;
         this.landingArmed = true;
@@ -402,6 +510,17 @@ export class GroundSystem {
 
     state.position.altitude = contactAltitude;
     groundVelocity.down = 0;
+
+    if (this.landingCycle && !this.crashed) {
+      this.contactStableElapsed += dt;
+      const settleSeconds = this.options.LANDING_SETTLE_SECONDS ?? 0.75;
+      if (!event && this.contactStableElapsed >= settleSeconds) {
+        event = this.finalizeLanding();
+        this.phase = 'landed';
+        this.message = `${this.lastReport.impactQuality} / ${this.lastReport.surfaceResult} ${this.lastReport.score}/100`;
+        this.messageUntil = Infinity;
+      }
+    }
 
     const brake = clamp(controls.brake ?? 0, 0, 1);
     const rough = !surface.onRunway;
@@ -498,6 +617,11 @@ export class GroundSystem {
       crashed: this.crashed,
       hasBeenAirborne: this.hasBeenAirborne,
       landingArmed: this.landingArmed,
+      landingCycle: this.landingCycle ? {
+        contacts: this.landingCycle.contacts.length,
+        bounces: this.landingCycle.bounceCount,
+        stableSeconds: this.contactStableElapsed
+      } : null,
       airportId: surface.airport?.id ?? null,
       runwayId: surface.runway?.id ?? null,
       surfaceType: surface.surfaceType,

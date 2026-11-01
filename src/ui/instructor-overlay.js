@@ -1,5 +1,8 @@
 import { drawAsciiText } from '../rendering/ascii-hud.js';
 
+export const INSTRUCTOR_SUBTITLE_BACKGROUND = '#000000';
+export const INSTRUCTOR_SUBTITLE_TEXT = '#FFFFFF';
+
 function wrapSubtitle(ctx, text, maxWidth) {
   const words = text.split(/\s+/);
   const lines = [];
@@ -63,16 +66,14 @@ export class InstructorOverlay {
     const backgroundY = y - backgroundHeight / 2;
 
     // A borderless inverse strip remains legible over runways and force vectors.
-    ctx.fillStyle = state.level === 'warning'
-      ? palette.danger
-      : palette.foreground;
+    ctx.fillStyle = INSTRUCTOR_SUBTITLE_BACKGROUND;
     ctx.fillRect(backgroundX, backgroundY, backgroundWidth, backgroundHeight);
     ctx.restore();
 
     lines.forEach((line, index) => {
       const lineY = y + (index - (lines.length - 1) / 2) * lineHeight;
       drawAsciiText(ctx, line, x, lineY, {
-        color: palette.background,
+        color: INSTRUCTOR_SUBTITLE_TEXT,
         font,
         align: 'center',
         baseline: 'middle'

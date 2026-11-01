@@ -10,6 +10,13 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import * as z from 'zod/v4';
 import { WebSocketServer } from 'ws';
 import { GameSession } from './game-session.mjs';
+import {
+  assertPlainInstructorMessage,
+  buildFlightInstructorPrompt,
+  INSTRUCTOR_MESSAGE_MAX_LENGTH,
+  INSTRUCTOR_SERVER_INSTRUCTIONS,
+  INSTRUCTOR_TOOL_DESCRIPTION
+} from './instructor-guidance.mjs';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const HOST = '127.0.0.1';
@@ -42,7 +49,8 @@ async function serveStatic(request, response) {
   }
 
   if (url.pathname === '/' && url.searchParams.get('mcp') !== '1') {
-    response.writeHead(302, { location: '/?mcp=1' });
+    url.searchParams.set('mcp', '1');
+    response.writeHead(302, { location: `/?${url.searchParams.toString()}` });
     response.end();
     return;
   }
@@ -160,6 +168,7 @@ function createMcpServer() {
       'This server observes and operates a live browser-based Cessna 172 vector flight simulator.',
       'Read flight state before giving advice or changing the simulation.',
       'Use MCP actions for human-timescale intent and scenarios, not 60 Hz control loops.',
+      ...INSTRUCTOR_SERVER_INSTRUCTIONS,
       `The visible game must be open at http://${HOST}:${PORT}/ before live tools can run.`
     ].join(' ')
   });
@@ -169,6 +178,18 @@ registerTool(mcp, 'get_flight_state', {
   description: 'Read the complete current aircraft, controls, wind, navigation, ground, envelope, force, moment, and display state.',
   inputSchema: {}
 }, () => game.requireState());
+
+registerTool(mcp, 'wait_for_flight_change', {
+  title: 'Wait for meaningful flight change',
+  description: 'Wait for the in-game one-second instructor monitor to report a meaningful phase, risk, navigation, speed, height, direction, or attitude change. Use this between pilot instructions instead of polling.',
+  inputSchema: {
+    afterRevision: z.number().int().min(0),
+    timeoutSeconds: z.number().min(1).max(30).default(15)
+  }
+}, args => game.waitForInstructorChange(
+  args.afterRevision,
+  Math.round(args.timeoutSeconds * 1000)
+));
 
 registerTool(mcp, 'get_force_vectors', {
   title: 'Get force vectors',
@@ -310,13 +331,16 @@ registerTool(mcp, 'fly_approach', {
 
 registerTool(mcp, 'show_instruction', {
   title: 'Show instructor instruction',
-  description: 'Show one short themed ASCII instruction over the simulator so the pilot does not need to return to chat.',
+  description: INSTRUCTOR_TOOL_DESCRIPTION,
   inputSchema: {
-    message: z.string().min(1).max(180),
+    message: z.string().min(1).max(INSTRUCTOR_MESSAGE_MAX_LENGTH),
     level: z.enum(['instruction', 'warning']).default('instruction'),
     durationSeconds: z.number().min(1).max(60).default(8)
   }
-}, args => game.command('show_instruction', args));
+}, args => {
+  assertPlainInstructorMessage(args.message);
+  return game.command('show_instruction', args);
+});
 
 registerTool(mcp, 'flight_recorder', {
   title: 'Flight recorder',
@@ -355,8 +379,17 @@ registerTool(mcp, 'tune_vor', {
 
 registerTool(mcp, 'set_display', {
   title: 'Set display',
-  description: 'Change theme, vector mode, map rotation, zoom, or the full-screen ILS overlay in the live game.',
+  description: 'Change rendering client, shared ASCII/3D theme, 3D camera, vector mode, map rotation, zoom, or the full-screen ILS overlay in the live game.',
   inputSchema: {
+    client: z.enum(['ascii', 'vector-3d']).optional(),
+    threeDStyle: z.enum([
+      'paper', 'night', 'phosphor', 'amber', 'black-white',
+      'github-light', 'github-dark', 'nord', 'dracula',
+      'solarized-light', 'solarized-dark', 'gruvbox-dark',
+      'tokyo-night', 'catppuccin-mocha',
+      'vector-day', 'nord-night', 'amber-crt', 'blueprint'
+    ]).optional(),
+    threeDCamera: z.enum(['cockpit', 'chase', 'tower']).optional(),
     theme: z.string().optional(),
     vectorMode: z.enum(['all', 'energy', 'nav']).optional(),
     rotationMode: z.enum(['north-up', 'track-up']).optional(),
@@ -434,7 +467,7 @@ mcp.registerPrompt('flight-instructor', {
     role: 'user',
     content: {
       type: 'text',
-      text: `Act as a concise Cessna 172 instructor in the vector flight simulator. Read flight://state before every assessment. Explain corrections using the visible force vectors, attitude, airspeed, vertical speed, AGL, and navigation data. Never claim to see scenery because this simulator intentionally has none.${focus ? ` Focus on: ${focus}.` : ''}`
+      text: buildFlightInstructorPrompt(focus)
     }
   }]
 }));

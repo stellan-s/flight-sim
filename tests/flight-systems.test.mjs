@@ -78,13 +78,22 @@ test('flight metrics include track, flight path, selected-airport height and cen
 test('flight recorder samples on simulation timestamps and exports events', () => {
   const recorder = new FlightRecorder({ sampleIntervalSeconds: 0.1, maxSamples: 3 });
   for (const time of [0, 0.05, 0.1, 0.2, 0.3]) {
-    recorder.update(time, () => ({ altitudeMslFt: 1000 + time }));
+    recorder.update(time, () => ({
+      altitudeMslFt: 1000 + time,
+      wind: { directionFromDeg: 270, speedKt: 15 },
+      navigation: { activeRunwayId: '18', runwayLocked: true },
+      ground: { onRunway: true, surfaceType: 'asphalt' }
+    }));
   }
   recorder.addEvent('takeoff', 0.25, { runwayId: '18' });
   const recording = recorder.export();
 
   assert.equal(recording.samples.length, 3);
   assert.deepEqual(recording.samples.map(sample => sample.timeSeconds), [0.1, 0.2, 0.3]);
+  assert.equal(recording.version, 2);
+  assert.equal(recording.samples.at(-1).navigation.activeRunwayId, '18');
+  assert.equal(recording.samples.at(-1).ground.onRunway, true);
+  assert.equal(recording.samples.at(-1).wind.directionFromDeg, 270);
   assert.equal(recording.events[0].type, 'takeoff');
   assert.equal(recorder.getStatus().eventCount, 1);
 });

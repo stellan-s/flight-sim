@@ -74,3 +74,40 @@ test('game session reports browser command failures', async () => {
 
   await assert.rejects(resultPromise, /Unknown airport: NOPE/);
 });
+
+test('game session waits for the browser-local instructor revision to change', async () => {
+  const session = new GameSession();
+  const socket = new FakeSocket();
+  session.attach(socket);
+  socket.emit('message', JSON.stringify({
+    type: 'state',
+    state: { instructorMonitor: { revision: 4, phase: 'airborne', risk: 'none' } }
+  }));
+
+  const resultPromise = session.waitForInstructorChange(4, 100);
+  assert.equal(session.status().waitingInstructorReads, 1);
+  socket.emit('message', JSON.stringify({
+    type: 'state',
+    state: { instructorMonitor: { revision: 5, phase: 'approach', risk: 'none' } }
+  }));
+
+  const result = await resultPromise;
+  assert.equal(result.changed, true);
+  assert.equal(result.monitor.revision, 5);
+  assert.equal(result.monitor.phase, 'approach');
+  assert.equal(session.status().waitingInstructorReads, 0);
+});
+
+test('game session instructor wait returns current state on timeout', async () => {
+  const session = new GameSession();
+  const socket = new FakeSocket();
+  session.attach(socket);
+  socket.emit('message', JSON.stringify({
+    type: 'state',
+    state: { instructorMonitor: { revision: 2, phase: 'ground', risk: 'none' } }
+  }));
+
+  const result = await session.waitForInstructorChange(2, 5);
+  assert.equal(result.changed, false);
+  assert.equal(result.monitor.revision, 2);
+});
