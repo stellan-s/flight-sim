@@ -67,8 +67,7 @@ export const VECTOR_3D_STYLE_IDS = CHART_THEME_NAMES;
 const LEGACY_3D_STYLE_ALIASES = Object.freeze({
   'vector-day': 'black-white',
   'nord-night': 'nord',
-  'amber-crt': 'amber',
-  blueprint: 'night'
+  'amber-crt': 'amber'
 });
 
 export function resolveVector3DStyleId(styleId) {

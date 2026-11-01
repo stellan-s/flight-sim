@@ -577,12 +577,13 @@ Implement all seven approved simulator improvements while preserving the existin
 - Removed the independent `3D aesthetic` setting. The active chart theme is now
   the single source of truth for the ASCII map, settings/help surfaces, and the
   Vector 3D client.
-- Vector 3D palettes are generated from all fourteen chart themes, including the
+- Vector 3D palettes are generated from all fifteen chart themes, including the
   same semantic force-vector colours. The 3D ground is a subtle blend of each
   theme's background and foreground so the horizon remains readable.
 - `Y`, the configuration console, persistence, URL style selection, and MCP
   display changes all update the shared theme. Legacy `vector-day`, `nord-night`,
-  `amber-crt`, and `blueprint` URLs map to compatible current themes.
+  and `amber-crt` URLs map to compatible current themes. `blueprint` is once
+  again a first-class shared theme in both clients.
 - Browser QA followed `ASCII Nord -> Vector 3D Nord -> Vector 3D Dracula ->
   ASCII Dracula` using real `K` and `Y` key events. Both reported theme fields
   matched at every step, all four screenshots matched visually, and no browser
@@ -702,3 +703,16 @@ Implement all seven approved simulator improvements while preserving the existin
   reflected every joystick command, and no console or page errors were reported.
 - The final full suite passes all 128 tests and JavaScript syntax checks; the
   production static build also completes successfully.
+
+## Shared Blueprint theme and temporary mouse look (2026-11-01)
+
+- Restored the former blue Vector 3D aesthetic as a real `blueprint` theme in
+  the common theme registry. It is now available in both ASCII and Vector 3D,
+  including their shared HUD, settings console and force-vector colours.
+- Vector 3D right-button mouse look is now temporary: yaw and pitch return to
+  centre on release, pointer cancellation, browser blur or hidden-tab input
+  cleanup. ASCII right-button map panning remains persistent after release.
+- Browser QA verified Blueprint in both clients without console errors and ran
+  an actual held right-button drag. The measured 3D look changed to 34.377
+  degrees yaw and 17.189 degrees pitch while held, then returned to exactly
+  zero on release; the ASCII map offset remained unchanged after release.

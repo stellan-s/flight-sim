@@ -40,6 +40,7 @@ function createInput() {
   };
   const panCalls = [];
   const lookCalls = [];
+  const resetLookCalls = [];
   const chart = {
     canvas,
     panByPixels(...args) { panCalls.push(args); },
@@ -56,7 +57,8 @@ function createInput() {
     },
     clients: {
       activeId: 'ascii',
-      lookByPixels(...args) { lookCalls.push(args); }
+      lookByPixels(...args) { lookCalls.push(args); },
+      resetLook() { resetLookCalls.push(true); }
     }
   };
   const input = new InputHandler(controls, chart, null, simulator);
@@ -69,6 +71,7 @@ function createInput() {
     canvas,
     panCalls,
     lookCalls,
+    resetLookCalls,
     restore() {
       globalThis.document = originalDocument;
       globalThis.window = originalWindow;
@@ -194,6 +197,7 @@ test('right-button drag pans the map and looks around in 3d', () => {
       pointerId: 2, clientX: 170, clientY: 240
     }));
     assert.deepEqual(fixture.lookCalls, [[-30, 40, fixture.input.mouseLookSensitivity]]);
+    assert.equal(fixture.resetLookCalls.length, 1);
   } finally {
     fixture.restore();
   }

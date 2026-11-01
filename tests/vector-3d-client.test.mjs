@@ -122,8 +122,9 @@ test('vector 3d follows chart theme changes and updates the chart when selected'
   assert.equal(client.style.foreground, CHART_THEMES.dracula.foreground);
   assert.equal(client.setStyle('amber'), 'amber');
   assert.equal(chart.theme, 'amber');
-  assert.equal(client.setStyle('blueprint'), 'night');
-  assert.equal(chart.theme, 'night');
+  assert.equal(client.setStyle('blueprint'), 'blueprint');
+  assert.equal(chart.theme, 'blueprint');
+  assert.equal(client.style.sky, CHART_THEMES.blueprint.background);
 });
 
 test('external cameras use the expected cycle and look-at orientation', () => {

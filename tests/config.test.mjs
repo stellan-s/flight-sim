@@ -37,7 +37,7 @@ test('chart defaults and zoom limits come from configuration', () => {
   assert.equal(chart.theme, CONFIG.DEFAULT_MAP_THEME);
   assert.equal(CONFIG.DEFAULT_MAP_THEME, 'black-white');
   assert.deepEqual(CHART_THEME_NAMES, [
-    'paper', 'night', 'phosphor', 'amber', 'black-white',
+    'paper', 'night', 'blueprint', 'phosphor', 'amber', 'black-white',
     'github-light', 'github-dark', 'nord', 'dracula',
     'solarized-light', 'solarized-dark', 'gruvbox-dark',
     'tokyo-night', 'catppuccin-mocha'
@@ -84,4 +84,6 @@ test('every chart theme provides the complete render palette', () => {
   assert.equal(CHART_THEMES['black-white'].vectorDrag, '#D55E00');
   assert.equal(CHART_THEMES['black-white'].vectorSide, '#A23BAA');
   assert.equal(CHART_THEMES['black-white'].vectorGroundTrack, '#E06C00');
+  assert.equal(CHART_THEMES.blueprint.background, '#052B4A');
+  assert.equal(CHART_THEMES.blueprint.foreground, '#E7F8FF');
 });

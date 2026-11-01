@@ -118,6 +118,7 @@ export class InputHandler {
   releaseHeldControls() {
     this.keys = {};
     this.rightPointer = null;
+    this.simulator?.clients?.resetLook?.();
     this.joystickActive = false;
     this.joystickBaselineAxes = null;
     this.controls.brake = 0;
@@ -384,6 +385,10 @@ export class InputHandler {
       this.rightPointer = null;
       canvas.releasePointerCapture?.(e.pointerId);
       e.preventDefault?.();
+
+      if (this.simulator?.clients?.activeId === 'vector-3d') {
+        this.simulator.clients.resetLook();
+      }
 
       // Preserve the original VOR shortcut: a stationary right-click tunes,
       // while a right-button drag moves the map.

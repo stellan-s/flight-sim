@@ -52,7 +52,7 @@ explicit link—to open the full-resolution, silent MP4 file.
 - **One Engine, Multiple Clients**: Change visualization without resetting flight
   - Original ASCII chart client remains the default
   - Vector 3D projects terrain grid, runways, obstacles, ILS, and force vectors
-  - All fourteen themes are shared by the ASCII map, consoles, and Vector 3D
+  - All fifteen themes are shared by the ASCII map, consoles, and Vector 3D
   - Both clients share the complete flight, control, navigation, energy, and status HUD
   - Cockpit, chase, and airport tower cameras share the same live flight
   - Hold the right mouse button to pan the map or look freely in any 3D camera
@@ -77,7 +77,7 @@ explicit link—to open the full-resolution, silent MP4 file.
   - Theme-aware needles, ASCII status, telemetry, MCP access, and an `I` toggle
 
 - **Aviation Chart Rendering**: Professional-style navigation charts
-  - 14 live themes, with black and white as the default
+  - 15 live themes, including Blueprint, with black and white as the default
   - Paper, night, phosphor, amber, GitHub, Nord, Dracula, Solarized, Gruvbox,
     Tokyo Night, and Catppuccin palettes
   - Airport symbols with runway diagrams
